@@ -4,20 +4,23 @@ Sonorie é um reprodutor de música offline moderno criado com Kotlin, Jetpack C
 
 ## Versão atual
 
-Sonorie v0.1.2 — Player Flow
+Sonorie v0.2.0 — Media Notification
 
-## Recursos validados e adicionados
+## Recursos já validados
 
 - Interface Android real com Material 3 / Material You
 - Permissão de áudio local
 - Leitura de músicas locais via MediaStore
 - Biblioteca offline
-- Reprodução básica com ExoPlayer
-- Mini-player clicável
+- Reprodução com ExoPlayer
+- Mini-player
 - Busca na biblioteca
 - Tela Player
 - Botões anterior/próxima
 - Progresso básico da faixa
+- Serviço dedicado de reprodução
+- Notificação de mídia
+- Base para controles na tela de bloqueio
 - Build APK via GitHub Actions
 
 ## Package

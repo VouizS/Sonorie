@@ -12,8 +12,8 @@ android {
         applicationId = "com.swlab.sonorie"
         minSdk = 23
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.2"
+        versionCode = 3
+        versionName = "0.2.0"
     }
 
     buildFeatures {
@@ -38,6 +38,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
+    implementation("androidx.media:media:1.7.0")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

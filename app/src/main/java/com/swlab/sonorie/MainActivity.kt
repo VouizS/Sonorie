@@ -1,13 +1,22 @@
 package com.swlab.sonorie
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import android.provider.MediaStore
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -69,7 +78,6 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -84,11 +92,29 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
+
+const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
+const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
+const val SONORIE_ACTION_PAUSE = "com.swlab.sonorie.action.PAUSE"
+const val SONORIE_ACTION_NEXT = "com.swlab.sonorie.action.NEXT"
+const val SONORIE_ACTION_PREVIOUS = "com.swlab.sonorie.action.PREVIOUS"
+const val SONORIE_ACTION_STOP = "com.swlab.sonorie.action.STOP"
+
+const val EXTRA_SONG_ID = "extra_song_id"
+const val EXTRA_SONG_TITLE = "extra_song_title"
+const val EXTRA_SONG_ARTIST = "extra_song_artist"
+const val EXTRA_SONG_ALBUM = "extra_song_album"
+const val EXTRA_SONG_DURATION = "extra_song_duration"
+const val EXTRA_SONG_URI = "extra_song_uri"
+
+const val SONORIE_NOTIFICATION_CHANNEL = "sonorie_playback"
+const val SONORIE_NOTIFICATION_ID = 2040
 
 data class Song(
     val id: Long,
@@ -106,29 +132,301 @@ enum class SonorieTab {
     Settings
 }
 
-class SonoriePlayer(context: Context) {
-    private val player = ExoPlayer.Builder(context).build()
+class SonoriePlaybackService : Service() {
+    private var player: ExoPlayer? = null
+    private var mediaSession: MediaSessionCompat? = null
+    private var currentSong: Song? = null
+    private var currentIndex: Int = -1
+    private var cachedSongs: List<Song> = emptyList()
+    private var isPlayingState: Boolean = false
 
-    fun play(song: Song) {
-        player.setMediaItem(MediaItem.fromUri(song.uri))
-        player.prepare()
-        player.play()
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+
+        player = ExoPlayer.Builder(this).build()
+        mediaSession = MediaSessionCompat(this, "SonoriePlaybackSession").apply {
+            isActive = true
+        }
     }
 
-    fun pause() {
-        player.pause()
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            SONORIE_ACTION_PLAY -> {
+                val song = songFromIntent(intent)
+                playSong(song)
+            }
+
+            SONORIE_ACTION_TOGGLE -> {
+                togglePlayback()
+            }
+
+            SONORIE_ACTION_PAUSE -> {
+                pausePlayback()
+            }
+
+            SONORIE_ACTION_NEXT -> {
+                playNext()
+            }
+
+            SONORIE_ACTION_PREVIOUS -> {
+                playPrevious()
+            }
+
+            SONORIE_ACTION_STOP -> {
+                stopPlayback()
+            }
+
+            else -> {
+                currentSong?.let { showNotification(it) }
+            }
+        }
+
+        return START_STICKY
     }
 
-    fun resume() {
-        player.play()
+    override fun onDestroy() {
+        mediaSession?.isActive = false
+        mediaSession?.release()
+        mediaSession = null
+
+        player?.release()
+        player = null
+
+        super.onDestroy()
     }
 
-    fun positionMs(): Long {
-        return player.currentPosition.coerceAtLeast(0L)
+    private fun songFromIntent(intent: Intent): Song {
+        val id = intent.getLongExtra(EXTRA_SONG_ID, -1L)
+        val title = intent.getStringExtra(EXTRA_SONG_TITLE) ?: "Sem título"
+        val artist = intent.getStringExtra(EXTRA_SONG_ARTIST) ?: "Artista desconhecido"
+        val album = intent.getStringExtra(EXTRA_SONG_ALBUM) ?: "Álbum desconhecido"
+        val duration = intent.getLongExtra(EXTRA_SONG_DURATION, 0L)
+        val uri = intent.getStringExtra(EXTRA_SONG_URI)?.let { Uri.parse(it) }
+            ?: ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+
+        return Song(
+            id = id,
+            title = title,
+            artist = artist,
+            album = album,
+            durationMs = duration,
+            uri = uri
+        )
     }
 
-    fun release() {
-        player.release()
+    private fun playSong(song: Song) {
+        currentSong = song
+        refreshSongCache()
+        currentIndex = cachedSongs.indexOfFirst { it.id == song.id }
+
+        isPlayingState = true
+        updateMetadata(song)
+        updatePlaybackState(true)
+        showNotification(song)
+
+        player?.setMediaItem(MediaItem.fromUri(song.uri))
+        player?.prepare()
+        player?.play()
+
+        showNotification(song)
+    }
+
+    private fun togglePlayback() {
+        val song = currentSong ?: return
+
+        if (isPlayingState) {
+            pausePlayback()
+        } else {
+            isPlayingState = true
+            player?.play()
+            updatePlaybackState(true)
+            showNotification(song)
+        }
+    }
+
+    private fun pausePlayback() {
+        val song = currentSong ?: return
+
+        isPlayingState = false
+        player?.pause()
+        updatePlaybackState(false)
+        showNotification(song)
+    }
+
+    private fun playNext() {
+        refreshSongCache()
+
+        if (cachedSongs.isEmpty()) return
+
+        val nextIndex = if (currentIndex >= 0) {
+            (currentIndex + 1) % cachedSongs.size
+        } else {
+            0
+        }
+
+        playSong(cachedSongs[nextIndex])
+    }
+
+    private fun playPrevious() {
+        refreshSongCache()
+
+        if (cachedSongs.isEmpty()) return
+
+        val previousIndex = if (currentIndex > 0) {
+            currentIndex - 1
+        } else {
+            cachedSongs.lastIndex
+        }
+
+        playSong(cachedSongs[previousIndex])
+    }
+
+    private fun stopPlayback() {
+        isPlayingState = false
+        player?.stop()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun refreshSongCache() {
+        if (cachedSongs.isEmpty()) {
+            cachedSongs = loadLocalSongs(this)
+        }
+    }
+
+    private fun updateMetadata(song: Song) {
+        val metadata = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, song.title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song.artist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, song.durationMs)
+            .build()
+
+        mediaSession?.setMetadata(metadata)
+    }
+
+    private fun updatePlaybackState(isPlaying: Boolean) {
+        val position = player?.currentPosition ?: 0L
+        val state = if (isPlaying) {
+            PlaybackStateCompat.STATE_PLAYING
+        } else {
+            PlaybackStateCompat.STATE_PAUSED
+        }
+
+        val playbackState = PlaybackStateCompat.Builder()
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or
+                    PlaybackStateCompat.ACTION_PAUSE or
+                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                    PlaybackStateCompat.ACTION_STOP
+            )
+            .setState(state, position, 1f)
+            .build()
+
+        mediaSession?.setPlaybackState(playbackState)
+    }
+
+    private fun showNotification(song: Song) {
+        val notification = buildNotification(song)
+        startForeground(SONORIE_NOTIFICATION_ID, notification)
+    }
+
+    private fun buildNotification(song: Song): android.app.Notification {
+        val openAppIntent = Intent(this, MainActivity::class.java)
+        val openAppPendingIntent = PendingIntent.getActivity(
+            this,
+            200,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val previousIntent = servicePendingIntent(SONORIE_ACTION_PREVIOUS, 201)
+        val toggleIntent = servicePendingIntent(SONORIE_ACTION_TOGGLE, 202)
+        val nextIntent = servicePendingIntent(SONORIE_ACTION_NEXT, 203)
+        val stopIntent = servicePendingIntent(SONORIE_ACTION_STOP, 204)
+
+        val playPauseIcon = if (isPlayingState) {
+            android.R.drawable.ic_media_pause
+        } else {
+            android.R.drawable.ic_media_play
+        }
+
+        val playPauseText = if (isPlayingState) "Pausar" else "Tocar"
+
+        return NotificationCompat.Builder(this, SONORIE_NOTIFICATION_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_sonorie)
+            .setContentTitle(song.title)
+            .setContentText(song.artist.ifBlank { "Sonorie" })
+            .setSubText("Sonorie")
+            .setContentIntent(openAppPendingIntent)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
+            .setOngoing(isPlayingState)
+            .addAction(android.R.drawable.ic_media_previous, "Anterior", previousIntent)
+            .addAction(playPauseIcon, playPauseText, toggleIntent)
+            .addAction(android.R.drawable.ic_media_next, "Próxima", nextIntent)
+            .setDeleteIntent(stopIntent)
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession?.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+            .build()
+    }
+
+    private fun servicePendingIntent(action: String, requestCode: Int): PendingIntent {
+        val intent = Intent(this, SonoriePlaybackService::class.java).apply {
+            this.action = action
+        }
+
+        return PendingIntent.getService(
+            this,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                SONORIE_NOTIFICATION_CHANNEL,
+                "Reprodução do Sonorie",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Controles de reprodução de música do Sonorie"
+                setShowBadge(false)
+            }
+
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+}
+
+fun sendPlaybackAction(context: Context, action: String, song: Song? = null) {
+    val intent = Intent(context, SonoriePlaybackService::class.java).apply {
+        this.action = action
+
+        if (song != null) {
+            putExtra(EXTRA_SONG_ID, song.id)
+            putExtra(EXTRA_SONG_TITLE, song.title)
+            putExtra(EXTRA_SONG_ARTIST, song.artist)
+            putExtra(EXTRA_SONG_ALBUM, song.album)
+            putExtra(EXTRA_SONG_DURATION, song.durationMs)
+            putExtra(EXTRA_SONG_URI, song.uri.toString())
+        }
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        ContextCompat.startForegroundService(context, intent)
+    } else {
+        context.startService(intent)
     }
 }
 
@@ -174,92 +472,103 @@ fun SonorieApp() {
     val songs = remember { mutableStateListOf<Song>() }
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
+    var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var currentSong by remember { mutableStateOf<Song?>(null) }
     var currentIndex by remember { mutableStateOf(-1) }
     var isPlaying by remember { mutableStateOf(false) }
     var progressMs by remember { mutableStateOf(0L) }
 
-    val player = remember {
-        SonoriePlayer(context.applicationContext)
+    fun requestNotificationIfNeeded(launcher: () -> Unit) {
+        if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            launcher()
+        }
     }
 
-    fun playAt(index: Int) {
+    fun playAt(index: Int, askNotification: () -> Unit) {
         if (index in songs.indices) {
+            requestNotificationIfNeeded(askNotification)
+
             val song = songs[index]
             currentIndex = index
             currentSong = song
             progressMs = 0L
-            player.play(song)
             isPlaying = true
+            sendPlaybackAction(context, SONORIE_ACTION_PLAY, song)
         }
     }
 
-    fun playSong(song: Song) {
+    fun playSong(song: Song, askNotification: () -> Unit) {
         val index = songs.indexOfFirst { it.id == song.id }
         if (index >= 0) {
-            playAt(index)
+            playAt(index, askNotification)
         }
     }
 
-    fun playNext() {
+    fun playNext(askNotification: () -> Unit) {
         if (songs.isNotEmpty()) {
             val nextIndex = if (currentIndex >= 0) {
                 (currentIndex + 1) % songs.size
             } else {
                 0
             }
-            playAt(nextIndex)
+            playAt(nextIndex, askNotification)
         }
     }
 
-    fun playPrevious() {
+    fun playPrevious(askNotification: () -> Unit) {
         if (songs.isNotEmpty()) {
             val previousIndex = if (currentIndex > 0) {
                 currentIndex - 1
             } else {
                 songs.lastIndex
             }
-            playAt(previousIndex)
+            playAt(previousIndex, askNotification)
         }
     }
 
-    fun togglePlayPause() {
+    fun togglePlayPause(askNotification: () -> Unit) {
+        requestNotificationIfNeeded(askNotification)
+
         if (currentSong == null && songs.isNotEmpty()) {
-            playAt(0)
+            playAt(0, askNotification)
             return
         }
 
         if (currentSong != null) {
-            if (isPlaying) {
-                player.pause()
-                isPlaying = false
-            } else {
-                player.resume()
-                isPlaying = true
-            }
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            player.release()
+            isPlaying = !isPlaying
+            sendPlaybackAction(context, SONORIE_ACTION_TOGGLE)
         }
     }
 
     LaunchedEffect(isPlaying, currentSong) {
         while (isPlaying && currentSong != null) {
-            progressMs = player.positionMs()
+            progressMs += 700L
+            if (currentSong != null && progressMs > currentSong!!.durationMs) {
+                progressMs = currentSong!!.durationMs
+            }
             delay(700)
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         permissionGranted = granted
         if (granted) {
             songs.clear()
             songs.addAll(loadLocalSongs(context))
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationGranted = granted
+    }
+
+    val askNotification: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -297,9 +606,9 @@ fun SonorieApp() {
                 MiniPlayer(
                     currentSong = currentSong,
                     isPlaying = isPlaying,
-                    onPlayPause = { togglePlayPause() },
-                    onNext = { playNext() },
-                    onPrevious = { playPrevious() },
+                    onPlayPause = { togglePlayPause(askNotification) },
+                    onNext = { playNext(askNotification) },
+                    onPrevious = { playPrevious(askNotification) },
                     onOpenPlayer = { selectedTab = SonorieTab.Player }
                 )
 
@@ -347,7 +656,7 @@ fun SonorieApp() {
                         permissionGranted = permissionGranted,
                         currentSong = currentSong,
                         onRequestPermission = {
-                            permissionLauncher.launch(requiredAudioPermission())
+                            audioPermissionLauncher.launch(requiredAudioPermission())
                         },
                         onOpenLibrary = { selectedTab = SonorieTab.Library },
                         onOpenPlayer = { selectedTab = SonorieTab.Player }
@@ -358,10 +667,10 @@ fun SonorieApp() {
                         permissionGranted = permissionGranted,
                         currentSong = currentSong,
                         onRequestPermission = {
-                            permissionLauncher.launch(requiredAudioPermission())
+                            audioPermissionLauncher.launch(requiredAudioPermission())
                         },
                         onPlaySong = { song ->
-                            playSong(song)
+                            playSong(song, askNotification)
                         }
                     )
 
@@ -369,19 +678,21 @@ fun SonorieApp() {
                         currentSong = currentSong,
                         progressMs = progressMs,
                         isPlaying = isPlaying,
-                        onPlayPause = { togglePlayPause() },
-                        onNext = { playNext() },
-                        onPrevious = { playPrevious() },
+                        onPlayPause = { togglePlayPause(askNotification) },
+                        onNext = { playNext(askNotification) },
+                        onPrevious = { playPrevious(askNotification) },
                         onOpenLibrary = { selectedTab = SonorieTab.Library }
                     )
 
                     SonorieTab.Settings -> SettingsScreen(
                         permissionGranted = permissionGranted,
+                        notificationGranted = notificationGranted,
                         songsCount = songs.size,
                         currentSong = currentSong,
                         onRequestPermission = {
-                            permissionLauncher.launch(requiredAudioPermission())
-                        }
+                            audioPermissionLauncher.launch(requiredAudioPermission())
+                        },
+                        onRequestNotification = askNotification
                     )
                 }
             }
@@ -862,12 +1173,12 @@ fun PlayerScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        "Base do player",
+                        "Reprodução do sistema",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "Nesta versão o Sonorie ganhou tela de reprodução, busca na biblioteca, progresso e botões anterior/próxima.",
+                        "Esta versão adiciona notificação de mídia e base para controles na tela de bloqueio.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -879,9 +1190,11 @@ fun PlayerScreen(
 @Composable
 fun SettingsScreen(
     permissionGranted: Boolean,
+    notificationGranted: Boolean,
     songsCount: Int,
     currentSong: Song?,
-    onRequestPermission: () -> Unit
+    onRequestPermission: () -> Unit,
+    onRequestNotification: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -895,7 +1208,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Sonorie v0.1.2",
+                text = "Sonorie v0.2.0",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -919,6 +1232,7 @@ fun SettingsScreen(
                     SettingLine("Material", "Material 3 / Material You")
                     SettingLine("Modo principal", "Offline")
                     SettingLine("Permissão de áudio", if (permissionGranted) "Permitida" else "Pendente")
+                    SettingLine("Notificação", if (notificationGranted) "Permitida" else "Pendente ou não exigida")
                     SettingLine("Músicas locais", songsCount.toString())
                     SettingLine("Tocando agora", currentSong?.title ?: "Nenhuma")
 
@@ -928,6 +1242,15 @@ fun SettingsScreen(
                             shape = RoundedCornerShape(22.dp)
                         ) {
                             Text("Permitir acesso às músicas")
+                        }
+                    }
+
+                    if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        FilledTonalButton(
+                            onClick = onRequestNotification,
+                            shape = RoundedCornerShape(22.dp)
+                        ) {
+                            Text("Permitir notificações")
                         }
                     }
                 }
@@ -949,7 +1272,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "v0.2.0: notificação de reprodução, MediaSession e serviço dedicado de áudio.",
+                        "v0.2.1: sincronizar melhor a UI com ações feitas direto na notificação e tela bloqueada.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1262,6 +1585,17 @@ fun hasAudioPermission(context: Context): Boolean {
     ) == PackageManager.PERMISSION_GRANTED
 }
 
+fun hasNotificationPermission(context: Context): Boolean {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    } else {
+        true
+    }
+}
+
 fun loadLocalSongs(context: Context): List<Song> {
     val songs = mutableListOf<Song>()
     val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
@@ -1317,8 +1651,7 @@ fun loadLocalSongs(context: Context): List<Song> {
 }
 
 fun formatDuration(durationMs: Long): String {
-    val safeMs = durationMs.coerceAtLeast(0L)
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(safeMs)
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(safeMs) % 60
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(durationMs.coerceAtLeast(0L))
+    val seconds = TimeUnit.MILLISECONDS.toSeconds(durationMs.coerceAtLeast(0L)) % 60
     return "%d:%02d".format(minutes, seconds)
 }

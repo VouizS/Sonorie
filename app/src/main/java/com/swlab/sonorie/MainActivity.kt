@@ -125,6 +125,20 @@ data class Song(
     val uri: Uri
 )
 
+object SonoriePlaybackState {
+    var currentSong by mutableStateOf<Song?>(null)
+    var isPlaying by mutableStateOf(false)
+    var positionMs by mutableStateOf(0L)
+    var eventVersion by mutableStateOf(0)
+
+    fun update(song: Song?, playing: Boolean, position: Long) {
+        currentSong = song
+        isPlaying = playing
+        positionMs = position.coerceAtLeast(0L)
+        eventVersion += 1
+    }
+}
+
 enum class SonorieTab {
     Home,
     Library,
@@ -198,6 +212,14 @@ class SonoriePlaybackService : Service() {
         super.onDestroy()
     }
 
+    private fun syncUiState() {
+        SonoriePlaybackState.update(
+            song = currentSong,
+            playing = isPlayingState,
+            position = player?.currentPosition ?: 0L
+        )
+    }
+
     private fun songFromIntent(intent: Intent): Song {
         val id = intent.getLongExtra(EXTRA_SONG_ID, -1L)
         val title = intent.getStringExtra(EXTRA_SONG_TITLE) ?: "Sem título"
@@ -225,12 +247,12 @@ class SonoriePlaybackService : Service() {
         isPlayingState = true
         updateMetadata(song)
         updatePlaybackState(true)
-        showNotification(song)
 
         player?.setMediaItem(MediaItem.fromUri(song.uri))
         player?.prepare()
         player?.play()
 
+        syncUiState()
         showNotification(song)
     }
 
@@ -243,6 +265,7 @@ class SonoriePlaybackService : Service() {
             isPlayingState = true
             player?.play()
             updatePlaybackState(true)
+            syncUiState()
             showNotification(song)
         }
     }
@@ -253,6 +276,7 @@ class SonoriePlaybackService : Service() {
         isPlayingState = false
         player?.pause()
         updatePlaybackState(false)
+        syncUiState()
         showNotification(song)
     }
 
@@ -287,6 +311,7 @@ class SonoriePlaybackService : Service() {
     private fun stopPlayback() {
         isPlayingState = false
         player?.stop()
+        syncUiState()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -473,10 +498,10 @@ fun SonorieApp() {
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
-    var currentSong by remember { mutableStateOf<Song?>(null) }
-    var currentIndex by remember { mutableStateOf(-1) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var progressMs by remember { mutableStateOf(0L) }
+    val currentSong = SonoriePlaybackState.currentSong
+    val isPlaying = SonoriePlaybackState.isPlaying
+    val playbackEventVersion = SonoriePlaybackState.eventVersion
+    var progressMs by remember { mutableStateOf(SonoriePlaybackState.positionMs) }
 
     fun requestNotificationIfNeeded(launcher: () -> Unit) {
         if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -489,10 +514,8 @@ fun SonorieApp() {
             requestNotificationIfNeeded(askNotification)
 
             val song = songs[index]
-            currentIndex = index
-            currentSong = song
             progressMs = 0L
-            isPlaying = true
+            SonoriePlaybackState.update(song, true, 0L)
             sendPlaybackAction(context, SONORIE_ACTION_PLAY, song)
         }
     }
@@ -504,10 +527,15 @@ fun SonorieApp() {
         }
     }
 
+    fun currentIndexFromState(): Int {
+        return songs.indexOfFirst { it.id == currentSong?.id }
+    }
+
     fun playNext(askNotification: () -> Unit) {
         if (songs.isNotEmpty()) {
-            val nextIndex = if (currentIndex >= 0) {
-                (currentIndex + 1) % songs.size
+            val baseIndex = currentIndexFromState()
+            val nextIndex = if (baseIndex >= 0) {
+                (baseIndex + 1) % songs.size
             } else {
                 0
             }
@@ -517,8 +545,9 @@ fun SonorieApp() {
 
     fun playPrevious(askNotification: () -> Unit) {
         if (songs.isNotEmpty()) {
-            val previousIndex = if (currentIndex > 0) {
-                currentIndex - 1
+            val baseIndex = currentIndexFromState()
+            val previousIndex = if (baseIndex > 0) {
+                baseIndex - 1
             } else {
                 songs.lastIndex
             }
@@ -535,16 +564,24 @@ fun SonorieApp() {
         }
 
         if (currentSong != null) {
-            isPlaying = !isPlaying
+            SonoriePlaybackState.update(
+                song = currentSong,
+                playing = !isPlaying,
+                position = progressMs
+            )
             sendPlaybackAction(context, SONORIE_ACTION_TOGGLE)
         }
     }
 
-    LaunchedEffect(isPlaying, currentSong) {
+    LaunchedEffect(playbackEventVersion) {
+        progressMs = SonoriePlaybackState.positionMs
+    }
+
+    LaunchedEffect(isPlaying, currentSong?.id) {
         while (isPlaying && currentSong != null) {
             progressMs += 700L
-            if (currentSong != null && progressMs > currentSong!!.durationMs) {
-                progressMs = currentSong!!.durationMs
+            if (progressMs > currentSong.durationMs) {
+                progressMs = currentSong.durationMs
             }
             delay(700)
         }
@@ -1178,7 +1215,7 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "Esta versão adiciona notificação de mídia e base para controles na tela de bloqueio.",
+                        "Esta versão sincroniza melhor a tela do app com ações feitas pela notificação e tela bloqueada.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1208,7 +1245,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Sonorie v0.2.0",
+                text = "Sonorie v0.2.1",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1272,7 +1309,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "v0.2.1: sincronizar melhor a UI com ações feitas direto na notificação e tela bloqueada.",
+                        "v0.2.2: capa de álbum real, progresso mais preciso e refinamento visual do player.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

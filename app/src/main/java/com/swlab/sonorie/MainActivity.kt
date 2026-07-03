@@ -40,7 +40,10 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -50,10 +53,12 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Surface
@@ -83,6 +88,7 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
 data class Song(
     val id: Long,
@@ -96,6 +102,7 @@ data class Song(
 enum class SonorieTab {
     Home,
     Library,
+    Player,
     Settings
 }
 
@@ -114,6 +121,10 @@ class SonoriePlayer(context: Context) {
 
     fun resume() {
         player.play()
+    }
+
+    fun positionMs(): Long {
+        return player.currentPosition.coerceAtLeast(0L)
     }
 
     fun release() {
@@ -164,15 +175,81 @@ fun SonorieApp() {
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var currentSong by remember { mutableStateOf<Song?>(null) }
+    var currentIndex by remember { mutableStateOf(-1) }
     var isPlaying by remember { mutableStateOf(false) }
+    var progressMs by remember { mutableStateOf(0L) }
 
     val player = remember {
         SonoriePlayer(context.applicationContext)
     }
 
+    fun playAt(index: Int) {
+        if (index in songs.indices) {
+            val song = songs[index]
+            currentIndex = index
+            currentSong = song
+            progressMs = 0L
+            player.play(song)
+            isPlaying = true
+        }
+    }
+
+    fun playSong(song: Song) {
+        val index = songs.indexOfFirst { it.id == song.id }
+        if (index >= 0) {
+            playAt(index)
+        }
+    }
+
+    fun playNext() {
+        if (songs.isNotEmpty()) {
+            val nextIndex = if (currentIndex >= 0) {
+                (currentIndex + 1) % songs.size
+            } else {
+                0
+            }
+            playAt(nextIndex)
+        }
+    }
+
+    fun playPrevious() {
+        if (songs.isNotEmpty()) {
+            val previousIndex = if (currentIndex > 0) {
+                currentIndex - 1
+            } else {
+                songs.lastIndex
+            }
+            playAt(previousIndex)
+        }
+    }
+
+    fun togglePlayPause() {
+        if (currentSong == null && songs.isNotEmpty()) {
+            playAt(0)
+            return
+        }
+
+        if (currentSong != null) {
+            if (isPlaying) {
+                player.pause()
+                isPlaying = false
+            } else {
+                player.resume()
+                isPlaying = true
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             player.release()
+        }
+    }
+
+    LaunchedEffect(isPlaying, currentSong) {
+        while (isPlaying && currentSong != null) {
+            progressMs = player.positionMs()
+            delay(700)
         }
     }
 
@@ -204,7 +281,10 @@ fun SonorieApp() {
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Música offline com alma",
+                            text = when (selectedTab) {
+                                SonorieTab.Player -> "Tocando agora"
+                                else -> "Música offline com alma"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -217,17 +297,10 @@ fun SonorieApp() {
                 MiniPlayer(
                     currentSong = currentSong,
                     isPlaying = isPlaying,
-                    onPlayPause = {
-                        if (currentSong != null) {
-                            if (isPlaying) {
-                                player.pause()
-                                isPlaying = false
-                            } else {
-                                player.resume()
-                                isPlaying = true
-                            }
-                        }
-                    }
+                    onPlayPause = { togglePlayPause() },
+                    onNext = { playNext() },
+                    onPrevious = { playPrevious() },
+                    onOpenPlayer = { selectedTab = SonorieTab.Player }
                 )
 
                 NavigationBar {
@@ -242,6 +315,12 @@ fun SonorieApp() {
                         onClick = { selectedTab = SonorieTab.Library },
                         icon = { Icon(Icons.Rounded.LibraryMusic, contentDescription = null) },
                         label = { Text("Biblioteca") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Player,
+                        onClick = { selectedTab = SonorieTab.Player },
+                        icon = { Icon(Icons.Rounded.PlayCircle, contentDescription = null) },
+                        label = { Text("Player") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == SonorieTab.Settings,
@@ -266,28 +345,40 @@ fun SonorieApp() {
                     SonorieTab.Home -> HomeScreen(
                         songs = songs,
                         permissionGranted = permissionGranted,
+                        currentSong = currentSong,
                         onRequestPermission = {
                             permissionLauncher.launch(requiredAudioPermission())
                         },
-                        onOpenLibrary = { selectedTab = SonorieTab.Library }
+                        onOpenLibrary = { selectedTab = SonorieTab.Library },
+                        onOpenPlayer = { selectedTab = SonorieTab.Player }
                     )
 
                     SonorieTab.Library -> LibraryScreen(
                         songs = songs,
                         permissionGranted = permissionGranted,
+                        currentSong = currentSong,
                         onRequestPermission = {
                             permissionLauncher.launch(requiredAudioPermission())
                         },
                         onPlaySong = { song ->
-                            currentSong = song
-                            player.play(song)
-                            isPlaying = true
+                            playSong(song)
                         }
+                    )
+
+                    SonorieTab.Player -> PlayerScreen(
+                        currentSong = currentSong,
+                        progressMs = progressMs,
+                        isPlaying = isPlaying,
+                        onPlayPause = { togglePlayPause() },
+                        onNext = { playNext() },
+                        onPrevious = { playPrevious() },
+                        onOpenLibrary = { selectedTab = SonorieTab.Library }
                     )
 
                     SonorieTab.Settings -> SettingsScreen(
                         permissionGranted = permissionGranted,
                         songsCount = songs.size,
+                        currentSong = currentSong,
                         onRequestPermission = {
                             permissionLauncher.launch(requiredAudioPermission())
                         }
@@ -302,8 +393,10 @@ fun SonorieApp() {
 fun HomeScreen(
     songs: List<Song>,
     permissionGranted: Boolean,
+    currentSong: Song?,
     onRequestPermission: () -> Unit,
-    onOpenLibrary: () -> Unit
+    onOpenLibrary: () -> Unit,
+    onOpenPlayer: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -317,6 +410,46 @@ fun HomeScreen(
                 onRequestPermission = onRequestPermission,
                 onOpenLibrary = onOpenLibrary
             )
+        }
+
+        if (currentSong != null) {
+            item {
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenPlayer),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.GraphicEq,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Continuar ouvindo",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
+                            )
+                            Text(
+                                currentSong.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         item {
@@ -465,9 +598,12 @@ fun HeroCard(
 fun LibraryScreen(
     songs: List<Song>,
     permissionGranted: Boolean,
+    currentSong: Song?,
     onRequestPermission: () -> Unit,
     onPlaySong: (Song) -> Unit
 ) {
+    var searchQuery by remember { mutableStateOf("") }
+
     if (!permissionGranted) {
         PermissionEmptyState(onRequestPermission)
         return
@@ -476,6 +612,16 @@ fun LibraryScreen(
     if (songs.isEmpty()) {
         EmptyMusicState()
         return
+    }
+
+    val filteredSongs = if (searchQuery.isBlank()) {
+        songs
+    } else {
+        songs.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                it.artist.contains(searchQuery, ignoreCase = true) ||
+                it.album.contains(searchQuery, ignoreCase = true)
+        }
     }
 
     LazyColumn(
@@ -494,14 +640,238 @@ fun LibraryScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(22.dp),
+                leadingIcon = {
+                    Icon(Icons.Rounded.Search, contentDescription = null)
+                },
+                placeholder = {
+                    Text("Buscar música, artista ou álbum")
+                }
+            )
+
+            if (searchQuery.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "${filteredSongs.size} resultado(s)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Spacer(Modifier.height(8.dp))
         }
 
-        items(songs, key = { it.id }) { song ->
+        items(filteredSongs, key = { it.id }) { song ->
             SongItem(
                 song = song,
+                isCurrent = currentSong?.id == song.id,
                 onClick = { onPlaySong(song) }
             )
+        }
+    }
+}
+
+@Composable
+fun PlayerScreen(
+    currentSong: Song?,
+    progressMs: Long,
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onOpenLibrary: () -> Unit
+) {
+    if (currentSong == null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Rounded.PlayCircle,
+                contentDescription = null,
+                modifier = Modifier.size(96.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Nada tocando agora",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "Abra a biblioteca e escolha uma música para iniciar o player.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(20.dp))
+            FilledTonalButton(
+                onClick = onOpenLibrary,
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Text("Abrir biblioteca")
+            }
+        }
+        return
+    }
+
+    val duration = currentSong.durationMs.coerceAtLeast(1L)
+    val safeProgress = (progressMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(310.dp)
+                    .clip(RoundedCornerShape(42.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                MaterialTheme.colorScheme.secondaryContainer,
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.MusicNote,
+                    contentDescription = null,
+                    modifier = Modifier.size(110.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        item {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    currentSong.title,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    currentSong.artist.ifBlank { "Artista desconhecido" },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    currentSong.album.ifBlank { "Álbum desconhecido" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        item {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                LinearProgressIndicator(
+                    progress = safeProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(50.dp))
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        formatDuration(progressMs),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        formatDuration(currentSong.durationMs),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onPrevious, modifier = Modifier.size(64.dp)) {
+                    Icon(
+                        Icons.Rounded.SkipPrevious,
+                        contentDescription = "Anterior",
+                        modifier = Modifier.size(38.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(18.dp))
+
+                FilledTonalButton(
+                    onClick = onPlayPause,
+                    shape = RoundedCornerShape(34.dp),
+                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 18.dp)
+                ) {
+                    Icon(
+                        if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = "Play/Pause",
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(18.dp))
+
+                IconButton(onClick = onNext, modifier = Modifier.size(64.dp)) {
+                    Icon(
+                        Icons.Rounded.SkipNext,
+                        contentDescription = "Próxima",
+                        modifier = Modifier.size(38.dp)
+                    )
+                }
+            }
+        }
+
+        item {
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "Base do player",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        "Nesta versão o Sonorie ganhou tela de reprodução, busca na biblioteca, progresso e botões anterior/próxima.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -510,6 +880,7 @@ fun LibraryScreen(
 fun SettingsScreen(
     permissionGranted: Boolean,
     songsCount: Int,
+    currentSong: Song?,
     onRequestPermission: () -> Unit
 ) {
     LazyColumn(
@@ -524,7 +895,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Sonorie v0.1.0",
+                text = "Sonorie v0.1.2",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -549,6 +920,7 @@ fun SettingsScreen(
                     SettingLine("Modo principal", "Offline")
                     SettingLine("Permissão de áudio", if (permissionGranted) "Permitida" else "Pendente")
                     SettingLine("Músicas locais", songsCount.toString())
+                    SettingLine("Tocando agora", currentSong?.title ?: "Nenhuma")
 
                     if (!permissionGranted) {
                         FilledTonalButton(
@@ -577,7 +949,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "v0.2.0: player em segundo plano, notificação de reprodução e sessão de mídia profissional.",
+                        "v0.2.0: notificação de reprodução, MediaSession e serviço dedicado de áudio.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -652,14 +1024,18 @@ fun EmptyMusicState() {
 }
 
 @Composable
-fun SongItem(song: Song, onClick: () -> Unit) {
+fun SongItem(song: Song, isCurrent: Boolean, onClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (isCurrent) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
         )
     ) {
         Row(
@@ -674,7 +1050,7 @@ fun SongItem(song: Song, onClick: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Rounded.MusicNote,
+                    if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
@@ -747,14 +1123,18 @@ fun SongCompactItem(song: Song) {
 fun MiniPlayer(
     currentSong: Song?,
     isPlaying: Boolean,
-    onPlayPause: () -> Unit
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onOpenPlayer: () -> Unit
 ) {
     if (currentSong == null) return
 
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clickable(onClick = onOpenPlayer),
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -787,10 +1167,26 @@ fun MiniPlayer(
                 )
             }
 
+            IconButton(onClick = onPrevious) {
+                Icon(
+                    Icons.Rounded.SkipPrevious,
+                    contentDescription = "Anterior",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+
             IconButton(onClick = onPlayPause) {
                 Icon(
                     if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = "Play/Pause",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+
+            IconButton(onClick = onNext) {
+                Icon(
+                    Icons.Rounded.SkipNext,
+                    contentDescription = "Próxima",
                     tint = MaterialTheme.colorScheme.onSecondaryContainer
                 )
             }
@@ -921,7 +1317,8 @@ fun loadLocalSongs(context: Context): List<Song> {
 }
 
 fun formatDuration(durationMs: Long): String {
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(durationMs)
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(durationMs) % 60
+    val safeMs = durationMs.coerceAtLeast(0L)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(safeMs)
+    val seconds = TimeUnit.MILLISECONDS.toSeconds(safeMs) % 60
     return "%d:%02d".format(minutes, seconds)
 }

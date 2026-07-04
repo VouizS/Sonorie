@@ -21,71 +21,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Album
-import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.LibraryMusic
-import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.PlayCircle
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.SkipNext
-import androidx.compose.material.icons.rounded.SkipPrevious
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Shapes
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.Typography
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,18 +44,18 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 import kotlinx.coroutines.delay
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
-const val SONORIE_ACTION_PAUSE = "com.swlab.sonorie.action.PAUSE"
 const val SONORIE_ACTION_NEXT = "com.swlab.sonorie.action.NEXT"
 const val SONORIE_ACTION_PREVIOUS = "com.swlab.sonorie.action.PREVIOUS"
 const val SONORIE_ACTION_STOP = "com.swlab.sonorie.action.STOP"
-
 const val EXTRA_SONG_ID = "extra_song_id"
 const val EXTRA_SONG_TITLE = "extra_song_title"
 const val EXTRA_SONG_ARTIST = "extra_song_artist"
@@ -117,9 +63,12 @@ const val EXTRA_SONG_ALBUM = "extra_song_album"
 const val EXTRA_SONG_DURATION = "extra_song_duration"
 const val EXTRA_SONG_URI = "extra_song_uri"
 const val EXTRA_SONG_ALBUM_ART = "extra_song_album_art"
-
 const val SONORIE_NOTIFICATION_CHANNEL = "sonorie_playback"
 const val SONORIE_NOTIFICATION_ID = 2040
+private const val SONORIE_PREFS = "sonorie_prefs"
+private const val SONORIE_FAVORITES_KEY = "favorite_song_ids"
+private const val SONORIE_SHUFFLE_KEY = "shuffle_enabled"
+private const val SONORIE_REPEAT_KEY = "repeat_mode"
 
 data class Song(
     val id: Long,
@@ -131,12 +80,14 @@ data class Song(
     val albumArtUri: Uri? = null
 )
 
+enum class SonorieTab { Home, Library, Player, Settings }
+enum class RepeatMode { Off, All, One }
+
 object SonoriePlaybackState {
     var currentSong by mutableStateOf<Song?>(null)
     var isPlaying by mutableStateOf(false)
     var positionMs by mutableStateOf(0L)
     var eventVersion by mutableStateOf(0)
-
     fun update(song: Song?, playing: Boolean, position: Long) {
         currentSong = song
         isPlaying = playing
@@ -145,51 +96,31 @@ object SonoriePlaybackState {
     }
 }
 
-enum class SonorieTab {
-    Home,
-    Library,
-    Player,
-    Settings
-}
-
 class SonoriePlaybackService : Service() {
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSessionCompat? = null
     private var currentSong: Song? = null
-    private var currentIndex: Int = -1
+    private var currentIndex = -1
     private var cachedSongs: List<Song> = emptyList()
-    private var isPlayingState: Boolean = false
+    private var isPlayingState = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-
-        player = ExoPlayer.Builder(this).build()
+        player = ExoPlayer.Builder(this).build().apply {
+            addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_ENDED) handleEnded()
+                }
+            })
+        }
         mediaSession = MediaSessionCompat(this, "SonoriePlaybackSession").apply {
             setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() {
-                    if (!isPlayingState) {
-                        togglePlayback()
-                    }
-                }
-
-                override fun onPause() {
-                    if (isPlayingState) {
-                        pausePlayback()
-                    }
-                }
-
-                override fun onSkipToNext() {
-                    playNext()
-                }
-
-                override fun onSkipToPrevious() {
-                    playPrevious()
-                }
-
-                override fun onStop() {
-                    stopPlayback()
-                }
+                override fun onPlay() { if (!isPlayingState) togglePlayback() }
+                override fun onPause() { if (isPlayingState) pausePlayback() }
+                override fun onSkipToNext() { playNext() }
+                override fun onSkipToPrevious() { playPrevious() }
+                override fun onStop() { stopPlayback() }
             })
             isActive = true
         }
@@ -199,76 +130,35 @@ class SonoriePlaybackService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            SONORIE_ACTION_PLAY -> {
-                val song = songFromIntent(intent)
-                playSong(song)
-            }
-
-            SONORIE_ACTION_TOGGLE -> {
-                togglePlayback()
-            }
-
-            SONORIE_ACTION_PAUSE -> {
-                pausePlayback()
-            }
-
-            SONORIE_ACTION_NEXT -> {
-                playNext()
-            }
-
-            SONORIE_ACTION_PREVIOUS -> {
-                playPrevious()
-            }
-
-            SONORIE_ACTION_STOP -> {
-                stopPlayback()
-            }
-
-            else -> {
-                currentSong?.let { showNotification(it) }
-            }
+            SONORIE_ACTION_PLAY -> playSong(songFromIntent(intent))
+            SONORIE_ACTION_TOGGLE -> togglePlayback()
+            SONORIE_ACTION_NEXT -> playNext()
+            SONORIE_ACTION_PREVIOUS -> playPrevious()
+            SONORIE_ACTION_STOP -> stopPlayback()
+            else -> currentSong?.let { showNotification(it) }
         }
-
         return START_STICKY
     }
 
     override fun onDestroy() {
         mediaSession?.isActive = false
         mediaSession?.release()
-        mediaSession = null
-
         player?.release()
-        player = null
-
         super.onDestroy()
-    }
-
-    private fun syncUiState() {
-        SonoriePlaybackState.update(
-            song = currentSong,
-            playing = isPlayingState,
-            position = player?.currentPosition ?: 0L
-        )
     }
 
     private fun songFromIntent(intent: Intent): Song {
         val id = intent.getLongExtra(EXTRA_SONG_ID, -1L)
-        val title = intent.getStringExtra(EXTRA_SONG_TITLE) ?: "Sem título"
-        val artist = intent.getStringExtra(EXTRA_SONG_ARTIST) ?: "Artista desconhecido"
-        val album = intent.getStringExtra(EXTRA_SONG_ALBUM) ?: "Álbum desconhecido"
-        val duration = intent.getLongExtra(EXTRA_SONG_DURATION, 0L)
         val uri = intent.getStringExtra(EXTRA_SONG_URI)?.let { Uri.parse(it) }
             ?: ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-        val albumArtUri = intent.getStringExtra(EXTRA_SONG_ALBUM_ART)?.let { Uri.parse(it) }
-
         return Song(
             id = id,
-            title = title,
-            artist = artist,
-            album = album,
-            durationMs = duration,
+            title = intent.getStringExtra(EXTRA_SONG_TITLE) ?: "Sem título",
+            artist = intent.getStringExtra(EXTRA_SONG_ARTIST) ?: "Artista desconhecido",
+            album = intent.getStringExtra(EXTRA_SONG_ALBUM) ?: "Álbum desconhecido",
+            durationMs = intent.getLongExtra(EXTRA_SONG_DURATION, 0L),
             uri = uri,
-            albumArtUri = albumArtUri
+            albumArtUri = intent.getStringExtra(EXTRA_SONG_ALBUM_ART)?.let { Uri.parse(it) }
         )
     }
 
@@ -276,28 +166,19 @@ class SonoriePlaybackService : Service() {
         currentSong = song
         refreshSongCache()
         currentIndex = cachedSongs.indexOfFirst { it.id == song.id }
-
         isPlayingState = true
-        updateMetadata(song)
-        updatePlaybackState(true)
-
         player?.setMediaItem(MediaItem.fromUri(song.uri))
         player?.prepare()
         player?.play()
-
         forceSystemPlaybackRefresh()
         showNotification(song)
     }
 
     private fun togglePlayback() {
         val song = currentSong ?: return
-
-        if (isPlayingState) {
-            pausePlayback()
-        } else {
+        if (isPlayingState) pausePlayback() else {
             isPlayingState = true
             player?.play()
-            updatePlaybackState(true)
             forceSystemPlaybackRefresh()
             showNotification(song)
         }
@@ -305,40 +186,51 @@ class SonoriePlaybackService : Service() {
 
     private fun pausePlayback() {
         val song = currentSong ?: return
-
         isPlayingState = false
         player?.pause()
-        updatePlaybackState(false)
         forceSystemPlaybackRefresh()
         showNotification(song)
     }
 
     private fun playNext() {
         refreshSongCache()
-
         if (cachedSongs.isEmpty()) return
-
-        val nextIndex = if (currentIndex >= 0) {
+        val nextIndex = if (loadShuffleEnabled(this) && cachedSongs.size > 1) {
+            var n = Random.nextInt(cachedSongs.size)
+            while (n == currentIndex) n = Random.nextInt(cachedSongs.size)
+            n
+        } else if (currentIndex >= 0) {
             (currentIndex + 1) % cachedSongs.size
-        } else {
-            0
-        }
-
+        } else 0
         playSong(cachedSongs[nextIndex])
     }
 
     private fun playPrevious() {
         refreshSongCache()
-
         if (cachedSongs.isEmpty()) return
-
-        val previousIndex = if (currentIndex > 0) {
-            currentIndex - 1
-        } else {
-            cachedSongs.lastIndex
-        }
-
+        val previousIndex = if (currentIndex > 0) currentIndex - 1 else cachedSongs.lastIndex
         playSong(cachedSongs[previousIndex])
+    }
+
+    private fun handleEnded() {
+        when (loadRepeatMode(this)) {
+            RepeatMode.One -> {
+                player?.seekTo(0L)
+                player?.play()
+                isPlayingState = true
+                forceSystemPlaybackRefresh()
+                currentSong?.let { showNotification(it) }
+            }
+            RepeatMode.All -> playNext()
+            RepeatMode.Off -> {
+                refreshSongCache()
+                if (currentIndex in 0 until cachedSongs.lastIndex) playNext() else {
+                    isPlayingState = false
+                    forceSystemPlaybackRefresh()
+                    currentSong?.let { showNotification(it) }
+                }
+            }
+        }
     }
 
     private fun stopPlayback() {
@@ -350,49 +242,41 @@ class SonoriePlaybackService : Service() {
     }
 
     private fun refreshSongCache() {
-        if (cachedSongs.isEmpty()) {
-            cachedSongs = loadLocalSongs(this)
-        }
+        if (cachedSongs.isEmpty()) cachedSongs = loadLocalSongs(this)
+    }
+
+    private fun syncUiState() {
+        SonoriePlaybackState.update(currentSong, isPlayingState, player?.currentPosition ?: 0L)
     }
 
     private fun updateMetadata(song: Song) {
-        val metadataBuilder = MediaMetadataCompat.Builder()
+        val builder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, song.title)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, song.durationMs)
-
         song.albumArtUri?.let {
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, it.toString())
-            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, it.toString())
+            builder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, it.toString())
+            builder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, it.toString())
         }
-
-        val metadata = metadataBuilder.build()
-
-        mediaSession?.setMetadata(metadata)
+        mediaSession?.setMetadata(builder.build())
     }
 
     private fun updatePlaybackState(isPlaying: Boolean) {
-        val position = player?.currentPosition ?: 0L
-        val state = if (isPlaying) {
-            PlaybackStateCompat.STATE_PLAYING
-        } else {
-            PlaybackStateCompat.STATE_PAUSED
-        }
-
-        val playbackState = PlaybackStateCompat.Builder()
-            .setActions(
-                PlaybackStateCompat.ACTION_PLAY or
-                    PlaybackStateCompat.ACTION_PAUSE or
-                    PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                    PlaybackStateCompat.ACTION_STOP
-            )
-            .setState(state, position, 1f)
-            .build()
-
-        mediaSession?.setPlaybackState(playbackState)
+        val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
+        mediaSession?.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_STOP
+                )
+                .setState(state, player?.currentPosition ?: 0L, 1f)
+                .build()
+        )
     }
 
     private fun forceSystemPlaybackRefresh() {
@@ -402,45 +286,28 @@ class SonoriePlaybackService : Service() {
     }
 
     private fun showNotification(song: Song) {
-        val notification = buildNotification(song)
-        startForeground(SONORIE_NOTIFICATION_ID, notification)
+        startForeground(SONORIE_NOTIFICATION_ID, buildNotification(song))
     }
 
     private fun buildNotification(song: Song): android.app.Notification {
-        val openAppIntent = Intent(this, MainActivity::class.java)
-        val openAppPendingIntent = PendingIntent.getActivity(
-            this,
-            200,
-            openAppIntent,
+        val openApp = PendingIntent.getActivity(
+            this, 200, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-
-        val previousIntent = servicePendingIntent(SONORIE_ACTION_PREVIOUS, 201)
-        val toggleIntent = servicePendingIntent(SONORIE_ACTION_TOGGLE, 202)
-        val nextIntent = servicePendingIntent(SONORIE_ACTION_NEXT, 203)
-        val stopIntent = servicePendingIntent(SONORIE_ACTION_STOP, 204)
-
-        val playPauseIcon = if (isPlayingState) {
-            android.R.drawable.ic_media_pause
-        } else {
-            android.R.drawable.ic_media_play
-        }
-
-        val playPauseText = if (isPlayingState) "Pausar" else "Tocar"
-
+        val playPauseIcon = if (isPlayingState) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         return NotificationCompat.Builder(this, SONORIE_NOTIFICATION_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_sonorie)
             .setContentTitle(song.title)
             .setContentText(song.artist.ifBlank { "Sonorie" })
             .setSubText("Sonorie")
-            .setContentIntent(openAppPendingIntent)
+            .setContentIntent(openApp)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setOngoing(isPlayingState)
-            .addAction(android.R.drawable.ic_media_previous, "Anterior", previousIntent)
-            .addAction(playPauseIcon, playPauseText, toggleIntent)
-            .addAction(android.R.drawable.ic_media_next, "Próxima", nextIntent)
-            .setDeleteIntent(stopIntent)
+            .addAction(android.R.drawable.ic_media_previous, "Anterior", servicePendingIntent(SONORIE_ACTION_PREVIOUS, 201))
+            .addAction(playPauseIcon, if (isPlayingState) "Pausar" else "Tocar", servicePendingIntent(SONORIE_ACTION_TOGGLE, 202))
+            .addAction(android.R.drawable.ic_media_next, "Próxima", servicePendingIntent(SONORIE_ACTION_NEXT, 203))
+            .setDeleteIntent(servicePendingIntent(SONORIE_ACTION_STOP, 204))
             .setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(mediaSession?.sessionToken)
@@ -450,31 +317,24 @@ class SonoriePlaybackService : Service() {
     }
 
     private fun servicePendingIntent(action: String, requestCode: Int): PendingIntent {
-        val intent = Intent(this, SonoriePlaybackService::class.java).apply {
-            this.action = action
-        }
-
         return PendingIntent.getService(
-            this,
-            requestCode,
-            intent,
+            this, requestCode, Intent(this, SonoriePlaybackService::class.java).apply { this.action = action },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                SONORIE_NOTIFICATION_CHANNEL,
-                "Reprodução do Sonorie",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Controles de reprodução de música do Sonorie"
-                setShowBadge(false)
-            }
-
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(
+                    SONORIE_NOTIFICATION_CHANNEL,
+                    "Reprodução do Sonorie",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Controles de reprodução de música do Sonorie"
+                    setShowBadge(false)
+                }
+            )
         }
     }
 }
@@ -482,18 +342,16 @@ class SonoriePlaybackService : Service() {
 fun sendPlaybackAction(context: Context, action: String, song: Song? = null) {
     val intent = Intent(context, SonoriePlaybackService::class.java).apply {
         this.action = action
-
-        if (song != null) {
-            putExtra(EXTRA_SONG_ID, song.id)
-            putExtra(EXTRA_SONG_TITLE, song.title)
-            putExtra(EXTRA_SONG_ARTIST, song.artist)
-            putExtra(EXTRA_SONG_ALBUM, song.album)
-            putExtra(EXTRA_SONG_DURATION, song.durationMs)
-            putExtra(EXTRA_SONG_URI, song.uri.toString())
-            putExtra(EXTRA_SONG_ALBUM_ART, song.albumArtUri?.toString())
+        song?.let {
+            putExtra(EXTRA_SONG_ID, it.id)
+            putExtra(EXTRA_SONG_TITLE, it.title)
+            putExtra(EXTRA_SONG_ARTIST, it.artist)
+            putExtra(EXTRA_SONG_ALBUM, it.album)
+            putExtra(EXTRA_SONG_DURATION, it.durationMs)
+            putExtra(EXTRA_SONG_URI, it.uri.toString())
+            putExtra(EXTRA_SONG_ALBUM_ART, it.albumArtUri?.toString())
         }
     }
-
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         ContextCompat.startForegroundService(context, intent)
     } else {
@@ -504,44 +362,18 @@ fun sendPlaybackAction(context: Context, action: String, song: Song? = null) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            SonorieTheme {
-                SonorieApp()
-            }
-        }
+        setContent { SonorieTheme { SonorieApp() } }
     }
-}
-
-private const val SONORIE_PREFS = "sonorie_prefs"
-private const val SONORIE_FAVORITES_KEY = "favorite_song_ids"
-
-fun loadFavoriteSongIds(context: Context): Set<Long> {
-    val prefs = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
-    return prefs.getStringSet(SONORIE_FAVORITES_KEY, emptySet())
-        ?.mapNotNull { it.toLongOrNull() }
-        ?.toSet()
-        ?: emptySet()
-}
-
-fun saveFavoriteSongIds(context: Context, ids: Set<Long>) {
-    val prefs = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
-    prefs.edit()
-        .putStringSet(SONORIE_FAVORITES_KEY, ids.map { it.toString() }.toSet())
-        .apply()
 }
 
 @Composable
 fun SonorieTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val useDark = false
-
-    val colorScheme =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (useDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else {
-            if (useDark) darkColorScheme() else lightColorScheme()
-        }
-
+    val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        dynamicLightColorScheme(context)
+    } else {
+        lightColorScheme()
+    }
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography(),
@@ -562,32 +394,24 @@ fun SonorieApp() {
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
-    var favoriteSongIds by remember { mutableStateOf(loadFavoriteSongIds(context)) }
+    var favoriteIds by remember { mutableStateOf(loadFavoriteSongIds(context)) }
+    var shuffleEnabled by remember { mutableStateOf(loadShuffleEnabled(context)) }
+    var repeatMode by remember { mutableStateOf(loadRepeatMode(context)) }
 
-    fun toggleFavorite(song: Song) {
-        val nextFavorites = if (song.id in favoriteSongIds) {
-            favoriteSongIds - song.id
-        } else {
-            favoriteSongIds + song.id
-        }
-        favoriteSongIds = nextFavorites
-        saveFavoriteSongIds(context, nextFavorites)
-    }
     val currentSong = SonoriePlaybackState.currentSong
     val isPlaying = SonoriePlaybackState.isPlaying
     val playbackEventVersion = SonoriePlaybackState.eventVersion
     var progressMs by remember { mutableStateOf(SonoriePlaybackState.positionMs) }
 
-    fun requestNotificationIfNeeded(launcher: () -> Unit) {
-        if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            launcher()
-        }
+    fun askNotification(launcher: () -> Unit) {
+        if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) launcher()
     }
 
-    fun playAt(index: Int, askNotification: () -> Unit) {
-        if (index in songs.indices) {
-            requestNotificationIfNeeded(askNotification)
+    fun currentIndex() = songs.indexOfFirst { it.id == currentSong?.id }
 
+    fun playAt(index: Int, ask: () -> Unit) {
+        if (index in songs.indices) {
+            askNotification(ask)
             val song = songs[index]
             progressMs = 0L
             SonoriePlaybackState.update(song, true, 0L)
@@ -595,76 +419,78 @@ fun SonorieApp() {
         }
     }
 
-    fun playSong(song: Song, askNotification: () -> Unit) {
+    fun playSong(song: Song, ask: () -> Unit) {
         val index = songs.indexOfFirst { it.id == song.id }
-        if (index >= 0) {
-            playAt(index, askNotification)
-        }
+        if (index >= 0) playAt(index, ask)
     }
 
-    fun currentIndexFromState(): Int {
-        return songs.indexOfFirst { it.id == currentSong?.id }
+    fun nextIndex(): Int {
+        if (songs.isEmpty()) return -1
+        val base = currentIndex()
+        return if (shuffleEnabled && songs.size > 1) {
+            var n = Random.nextInt(songs.size)
+            while (n == base) n = Random.nextInt(songs.size)
+            n
+        } else if (base >= 0) (base + 1) % songs.size else 0
     }
 
-    fun playNext(askNotification: () -> Unit) {
-        if (songs.isNotEmpty()) {
-            val baseIndex = currentIndexFromState()
-            val nextIndex = if (baseIndex >= 0) {
-                (baseIndex + 1) % songs.size
-            } else {
-                0
-            }
-            playAt(nextIndex, askNotification)
-        }
+    fun previousIndex(): Int {
+        if (songs.isEmpty()) return -1
+        val base = currentIndex()
+        return if (base > 0) base - 1 else songs.lastIndex
     }
 
-    fun playPrevious(askNotification: () -> Unit) {
-        if (songs.isNotEmpty()) {
-            val baseIndex = currentIndexFromState()
-            val previousIndex = if (baseIndex > 0) {
-                baseIndex - 1
-            } else {
-                songs.lastIndex
-            }
-            playAt(previousIndex, askNotification)
-        }
-    }
+    fun playNext(ask: () -> Unit) { nextIndex().takeIf { it >= 0 }?.let { playAt(it, ask) } }
+    fun playPrevious(ask: () -> Unit) { previousIndex().takeIf { it >= 0 }?.let { playAt(it, ask) } }
 
-    fun togglePlayPause(askNotification: () -> Unit) {
-        requestNotificationIfNeeded(askNotification)
-
+    fun togglePlayPause(ask: () -> Unit) {
+        askNotification(ask)
         if (currentSong == null && songs.isNotEmpty()) {
-            playAt(0, askNotification)
+            playAt(0, ask)
             return
         }
-
         if (currentSong != null) {
-            SonoriePlaybackState.update(
-                song = currentSong,
-                playing = !isPlaying,
-                position = progressMs
-            )
+            SonoriePlaybackState.update(currentSong, !isPlaying, progressMs)
             sendPlaybackAction(context, SONORIE_ACTION_TOGGLE)
         }
     }
 
-    LaunchedEffect(playbackEventVersion) {
-        progressMs = SonoriePlaybackState.positionMs
+    fun toggleFavorite(song: Song) {
+        val next = if (song.id in favoriteIds) favoriteIds - song.id else favoriteIds + song.id
+        favoriteIds = next
+        saveFavoriteSongIds(context, next)
     }
 
+    fun toggleShuffle() {
+        shuffleEnabled = !shuffleEnabled
+        saveShuffleEnabled(context, shuffleEnabled)
+    }
+
+    fun cycleRepeat() {
+        repeatMode = when (repeatMode) {
+            RepeatMode.Off -> RepeatMode.All
+            RepeatMode.All -> RepeatMode.One
+            RepeatMode.One -> RepeatMode.Off
+        }
+        saveRepeatMode(context, repeatMode)
+    }
+
+    fun queuePreview(): List<Song> {
+        if (songs.isEmpty()) return emptyList()
+        val base = currentIndex()
+        val ordered = if (base >= 0) songs.drop(base + 1) + songs.take(base) else songs
+        return ordered.take(5)
+    }
+
+    LaunchedEffect(playbackEventVersion) { progressMs = SonoriePlaybackState.positionMs }
     LaunchedEffect(isPlaying, currentSong?.id) {
         while (isPlaying && currentSong != null) {
-            progressMs += 500L
-            if (progressMs > currentSong.durationMs) {
-                progressMs = currentSong.durationMs
-            }
+            progressMs = (progressMs + 500L).coerceAtMost(currentSong.durationMs)
             delay(500)
         }
     }
 
-    val audioPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         permissionGranted = granted
         if (granted) {
             songs.clear()
@@ -672,13 +498,11 @@ fun SonorieApp() {
         }
     }
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         notificationGranted = granted
     }
 
-    val askNotification: () -> Unit = {
+    val askNotificationRequest: () -> Unit = {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -696,16 +520,9 @@ fun SonorieApp() {
             CenterAlignedTopAppBar(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Sonorie", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         Text(
-                            text = "Sonorie",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = when (selectedTab) {
-                                SonorieTab.Player -> "Tocando agora"
-                                else -> "Música offline com alma"
-                            },
+                            if (selectedTab == SonorieTab.Player) "Tocando agora" else "Música offline com alma",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -718,103 +535,56 @@ fun SonorieApp() {
                 MiniPlayer(
                     currentSong = currentSong,
                     isPlaying = isPlaying,
-                    onPlayPause = { togglePlayPause(askNotification) },
-                    onNext = { playNext(askNotification) },
-                    onPrevious = { playPrevious(askNotification) },
+                    onPlayPause = { togglePlayPause(askNotificationRequest) },
+                    onNext = { playNext(askNotificationRequest) },
+                    onPrevious = { playPrevious(askNotificationRequest) },
                     onOpenPlayer = { selectedTab = SonorieTab.Player }
                 )
-
                 NavigationBar {
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Home,
-                        onClick = { selectedTab = SonorieTab.Home },
-                        icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
-                        label = { Text("Início") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Library,
-                        onClick = { selectedTab = SonorieTab.Library },
-                        icon = { Icon(Icons.Rounded.LibraryMusic, contentDescription = null) },
-                        label = { Text("Biblioteca") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Player,
-                        onClick = { selectedTab = SonorieTab.Player },
-                        icon = { Icon(Icons.Rounded.PlayCircle, contentDescription = null) },
-                        label = { Text("Player") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Settings,
-                        onClick = { selectedTab = SonorieTab.Settings },
-                        icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
-                        label = { Text("Ajustes") }
-                    )
+                    NavigationBarItem(selectedTab == SonorieTab.Home, { selectedTab = SonorieTab.Home }, { Icon(Icons.Rounded.Home, null) }, label = { Text("Início") })
+                    NavigationBarItem(selectedTab == SonorieTab.Library, { selectedTab = SonorieTab.Library }, { Icon(Icons.Rounded.LibraryMusic, null) }, label = { Text("Biblioteca") })
+                    NavigationBarItem(selectedTab == SonorieTab.Player, { selectedTab = SonorieTab.Player }, { Icon(Icons.Rounded.PlayCircle, null) }, label = { Text("Player") })
+                    NavigationBarItem(selectedTab == SonorieTab.Settings, { selectedTab = SonorieTab.Settings }, { Icon(Icons.Rounded.Settings, null) }, label = { Text("Ajustes") })
                 }
             }
         }
     ) { padding ->
-        Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            AnimatedContent(
-                targetState = selectedTab,
-                label = "SonorieTabAnimation"
-            ) { tab ->
-                when (tab) {
-                    SonorieTab.Home -> HomeScreen(
-                        songs = songs,
-                        permissionGranted = permissionGranted,
-                        currentSong = currentSong,
-                        onRequestPermission = {
-                            audioPermissionLauncher.launch(requiredAudioPermission())
-                        },
-                        onOpenLibrary = { selectedTab = SonorieTab.Library },
-                        onOpenPlayer = { selectedTab = SonorieTab.Player }
-                    )
-
-                    SonorieTab.Library -> LibraryScreen(
-                        songs = songs,
-                        permissionGranted = permissionGranted,
-                        currentSong = currentSong,
-                        favoriteSongIds = favoriteSongIds,
-                        onRequestPermission = {
-                            audioPermissionLauncher.launch(requiredAudioPermission())
-                        },
-                        onPlaySong = { song ->
-                            playSong(song, askNotification)
-                        },
-                        onToggleFavorite = { song ->
-                            toggleFavorite(song)
-                        }
-                    )
-
-                    SonorieTab.Player -> PlayerScreen(
-                        currentSong = currentSong,
-                        progressMs = progressMs,
-                        isPlaying = isPlaying,
-                        isFavorite = currentSong?.id in favoriteSongIds,
-                        onToggleFavorite = {
-                            currentSong?.let { toggleFavorite(it) }
-                        },
-                        onPlayPause = { togglePlayPause(askNotification) },
-                        onNext = { playNext(askNotification) },
-                        onPrevious = { playPrevious(askNotification) },
-                        onOpenLibrary = { selectedTab = SonorieTab.Library }
-                    )
-
-                    SonorieTab.Settings -> SettingsScreen(
-                        permissionGranted = permissionGranted,
-                        notificationGranted = notificationGranted,
-                        songsCount = songs.size,
-                        currentSong = currentSong,
-                        onRequestPermission = {
-                            audioPermissionLauncher.launch(requiredAudioPermission())
-                        },
-                        onRequestNotification = askNotification
-                    )
-                }
+        Surface(Modifier.fillMaxSize().padding(padding)) {
+            when (selectedTab) {
+                SonorieTab.Home -> HomeScreen(
+                    songs, permissionGranted, currentSong,
+                    onRequestPermission = { audioPermissionLauncher.launch(requiredAudioPermission()) },
+                    onOpenLibrary = { selectedTab = SonorieTab.Library },
+                    onOpenPlayer = { selectedTab = SonorieTab.Player }
+                )
+                SonorieTab.Library -> LibraryScreen(
+                    songs, permissionGranted, currentSong, favoriteIds,
+                    onRequestPermission = { audioPermissionLauncher.launch(requiredAudioPermission()) },
+                    onPlaySong = { playSong(it, askNotificationRequest) },
+                    onToggleFavorite = { toggleFavorite(it) }
+                )
+                SonorieTab.Player -> PlayerScreen(
+                    currentSong = currentSong,
+                    progressMs = progressMs,
+                    isPlaying = isPlaying,
+                    isFavorite = currentSong?.id in favoriteIds,
+                    shuffleEnabled = shuffleEnabled,
+                    repeatMode = repeatMode,
+                    queuePreview = queuePreview(),
+                    onToggleFavorite = { currentSong?.let { toggleFavorite(it) } },
+                    onToggleShuffle = { toggleShuffle() },
+                    onCycleRepeat = { cycleRepeat() },
+                    onPlayPause = { togglePlayPause(askNotificationRequest) },
+                    onNext = { playNext(askNotificationRequest) },
+                    onPrevious = { playPrevious(askNotificationRequest) },
+                    onOpenLibrary = { selectedTab = SonorieTab.Library }
+                )
+                SonorieTab.Settings -> SettingsScreen(
+                    permissionGranted, notificationGranted, songs.size, currentSong,
+                    shuffleEnabled, repeatMode, favoriteIds.size,
+                    onRequestPermission = { audioPermissionLauncher.launch(requiredAudioPermission()) },
+                    onRequestNotification = askNotificationRequest
+                )
             }
         }
     }
@@ -829,194 +599,68 @@ fun HomeScreen(
     onOpenLibrary: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            HeroCard(
-                permissionGranted = permissionGranted,
-                songsCount = songs.size,
-                onRequestPermission = onRequestPermission,
-                onOpenLibrary = onOpenLibrary
-            )
-        }
-
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { HeroCard(permissionGranted, songs.size, onRequestPermission, onOpenLibrary) }
         if (currentSong != null) {
             item {
                 ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onOpenPlayer),
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenPlayer),
                     shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
+                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(18.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Rounded.GraphicEq,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                    Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.GraphicEq, null)
                         Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Continuar ouvindo",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f)
-                            )
-                            Text(
-                                currentSong.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                        Column(Modifier.weight(1f)) {
+                            Text("Continuar ouvindo", style = MaterialTheme.typography.labelMedium)
+                            Text(currentSong.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
             }
         }
-
-        item {
-            SectionTitle("Resumo local")
-        }
-
+        item { SectionTitle("Resumo local") }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Músicas",
-                    value = songs.size.toString()
-                )
-                StatCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Modo",
-                    value = "Offline"
-                )
+                StatCard(Modifier.weight(1f), "Músicas", songs.size.toString())
+                StatCard(Modifier.weight(1f), "Modo", "Offline")
             }
         }
-
+        item { SectionTitle("Cápsulas") }
         item {
-            SectionTitle("Cápsulas")
-        }
-
-        item {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Rounded.GraphicEq,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Rounded.GraphicEq, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            "Cápsulas musicais offline",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("Cápsulas musicais offline", fontWeight = FontWeight.Bold)
                     }
-                    Text(
-                        "Em breve: treino, estudo, viagem, madrugada e favoritas organizadas por momento.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("Em breve: treino, estudo, viagem, madrugada e favoritas organizadas por momento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
-
-        item {
-            SectionTitle("Últimas músicas encontradas")
-        }
-
-        items(songs.take(5)) { song ->
-            SongCompactItem(song = song)
-        }
+        item { SectionTitle("Últimas músicas encontradas") }
+        items(songs.take(5)) { SongCompactItem(it) }
     }
 }
 
 @Composable
-fun HeroCard(
-    permissionGranted: Boolean,
-    songsCount: Int,
-    onRequestPermission: () -> Unit,
-    onOpenLibrary: () -> Unit
-) {
-    val gradient = Brush.linearGradient(
-        listOf(
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.tertiaryContainer
-        )
-    )
-
-    ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(34.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(gradient)
-                .padding(24.dp)
-        ) {
+fun HeroCard(permissionGranted: Boolean, songsCount: Int, onRequestPermission: () -> Unit, onOpenLibrary: () -> Unit) {
+    val gradient = Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.tertiaryContainer))
+    ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(34.dp)) {
+        Box(Modifier.fillMaxWidth().background(gradient).padding(24.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(58.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(32.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                Box(Modifier.size(58.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.70f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.MusicNote, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
                 }
-
+                Text("Sua biblioteca local, com visual moderno.", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    text = "Sua biblioteca local, com visual moderno.",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                    if (permissionGranted) "Encontramos $songsCount músicas no aparelho. Toque na biblioteca para começar."
+                    else "Permita acesso às músicas para o Sonorie funcionar offline de verdade.",
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
                 )
-
-                Text(
-                    text = if (permissionGranted) {
-                        "Encontramos $songsCount músicas no aparelho. Toque na biblioteca para começar."
-                    } else {
-                        "Permita acesso às músicas para o Sonorie funcionar offline de verdade."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
-                )
-
-                FilledTonalButton(
-                    onClick = if (permissionGranted) onOpenLibrary else onRequestPermission,
-                    shape = RoundedCornerShape(22.dp),
-                    colors = ButtonDefaults.filledTonalButtonColors()
-                ) {
-                    Icon(
-                        if (permissionGranted) Icons.Rounded.LibraryMusic else Icons.Rounded.PlayCircle,
-                        contentDescription = null
-                    )
+                FilledTonalButton(onClick = if (permissionGranted) onOpenLibrary else onRequestPermission, shape = RoundedCornerShape(22.dp)) {
+                    Icon(if (permissionGranted) Icons.Rounded.LibraryMusic else Icons.Rounded.PlayArrow, null)
                     Spacer(Modifier.width(8.dp))
                     Text(if (permissionGranted) "Abrir biblioteca" else "Permitir músicas")
                 }
@@ -1035,138 +679,76 @@ fun LibraryScreen(
     onPlaySong: (Song) -> Unit,
     onToggleFavorite: (Song) -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    var showFavoritesOnly by remember { mutableStateOf(false) }
-
-    if (!permissionGranted) {
-        PermissionEmptyState(onRequestPermission)
-        return
+    var query by remember { mutableStateOf("") }
+    var favoritesOnly by remember { mutableStateOf(false) }
+    val base = if (favoritesOnly) songs.filter { it.id in favoriteSongIds } else songs
+    val filtered = if (query.isBlank()) base else base.filter {
+        it.title.contains(query, true) || it.artist.contains(query, true) || it.album.contains(query, true)
     }
 
-    if (songs.isEmpty()) {
-        EmptyMusicState()
-        return
-    }
-
-    val baseSongs = if (showFavoritesOnly) {
-        songs.filter { it.id in favoriteSongIds }
-    } else {
-        songs
-    }
-
-    val filteredSongs = if (searchQuery.isBlank()) {
-        baseSongs
-    } else {
-        baseSongs.filter {
-            it.title.contains(searchQuery, ignoreCase = true) ||
-                it.artist.contains(searchQuery, ignoreCase = true) ||
-                it.album.contains(searchQuery, ignoreCase = true)
-        }
-    }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text(
-                text = "Biblioteca local",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "${songs.size} músicas encontradas no aparelho",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(12.dp))
-
+            Text("Biblioteca local", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+            Text("${songs.size} músicas encontradas no aparelho", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (!permissionGranted) item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
+        item {
             OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+                value = query,
+                onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
+                leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                placeholder = { Text("Buscar música, artista ou álbum") },
                 singleLine = true,
-                shape = RoundedCornerShape(22.dp),
-                leadingIcon = {
-                    Icon(Icons.Rounded.Search, contentDescription = null)
-                },
-                placeholder = {
-                    Text("Buscar música, artista ou álbum")
-                }
+                shape = RoundedCornerShape(24.dp)
             )
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilledTonalButton(
-                    onClick = { showFavoritesOnly = false },
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Text(if (showFavoritesOnly) "Todas" else "Todas ✓")
-                }
-
-                FilledTonalButton(
-                    onClick = { showFavoritesOnly = true },
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.Favorite,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton({ favoritesOnly = false }, shape = RoundedCornerShape(18.dp)) { Text(if (favoritesOnly) "Todas" else "Todas ✓") }
+                FilledTonalButton({ favoritesOnly = true }, shape = RoundedCornerShape(18.dp)) {
+                    Icon(Icons.Rounded.Favorite, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (showFavoritesOnly) "Favoritas ✓" else "Favoritas (${favoriteSongIds.size})")
-                }
-            }
-
-            if (searchQuery.isNotBlank() || showFavoritesOnly) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "${filteredSongs.size} resultado(s)",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-        }
-
-        if (filteredSongs.isEmpty() && showFavoritesOnly) {
-            item {
-                OutlinedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            "Nenhuma favorita ainda",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            "Toque no coração de uma música para guardar aqui.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(if (favoritesOnly) "Favoritas ✓" else "Favoritas (${favoriteSongIds.size})")
                 }
             }
         }
+        if (query.isNotBlank() || favoritesOnly) item { Text("${filtered.size} resultado(s)", style = MaterialTheme.typography.labelMedium) }
+        if (filtered.isEmpty() && favoritesOnly) item {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("Nenhuma favorita ainda", fontWeight = FontWeight.Bold)
+                    Text("Toque no coração de uma música para guardar aqui.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        items(filtered, key = { it.id }) { song ->
+            SongItem(song, currentSong?.id == song.id, song.id in favoriteSongIds, { onToggleFavorite(song) }, { onPlaySong(song) })
+        }
+    }
+}
 
-        items(filteredSongs, key = { it.id }) { song ->
-            SongItem(
-                song = song,
-                isCurrent = currentSong?.id == song.id,
-                isFavorite = song.id in favoriteSongIds,
-                onToggleFavorite = { onToggleFavorite(song) },
-                onClick = { onPlaySong(song) }
-            )
+@Composable
+fun SongItem(song: Song, isCurrent: Boolean, isFavorite: Boolean, onToggleFavorite: () -> Unit, onClick: () -> Unit) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(54.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+                Icon(if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(song.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.artist, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(formatDuration(song.durationMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favoritar", tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = onClick) { Icon(Icons.Rounded.PlayArrow, "Tocar") }
         }
     }
 }
@@ -1177,220 +759,128 @@ fun PlayerScreen(
     progressMs: Long,
     isPlaying: Boolean,
     isFavorite: Boolean,
+    shuffleEnabled: Boolean,
+    repeatMode: RepeatMode,
+    queuePreview: List<Song>,
     onToggleFavorite: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onCycleRepeat: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onOpenLibrary: () -> Unit
 ) {
     if (currentSong == null) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                Icons.Rounded.PlayCircle,
-                contentDescription = null,
-                modifier = Modifier.size(96.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(18.dp))
-            Text(
-                "Nada tocando agora",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Abra a biblioteca e escolha uma música para iniciar o player.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(20.dp))
-            FilledTonalButton(
-                onClick = onOpenLibrary,
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Text("Abrir biblioteca")
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Icon(Icons.Rounded.MusicNote, null, Modifier.size(82.dp), tint = MaterialTheme.colorScheme.primary)
+                Text("Nada tocando agora", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                FilledTonalButton(onClick = onOpenLibrary) { Text("Abrir biblioteca") }
             }
         }
         return
     }
 
-    val duration = currentSong.durationMs.coerceAtLeast(1L)
-    val safeProgress = (progressMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(22.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(310.dp)
-                    .clip(RoundedCornerShape(42.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                MaterialTheme.colorScheme.secondaryContainer,
-                                MaterialTheme.colorScheme.tertiaryContainer
-                            )
-                        )
-                    ),
+                Modifier.fillMaxWidth().height(290.dp).clip(RoundedCornerShape(34.dp)).background(
+                    Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.tertiaryContainer))
+                ),
                 contentAlignment = Alignment.Center
             ) {
                 if (currentSong.albumArtUri != null) {
-                    AsyncImage(
-                        model = currentSong.albumArtUri,
-                        contentDescription = "Capa do álbum",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    AsyncImage(currentSong.albumArtUri, "Capa do álbum", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
-                    Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(110.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Icon(Icons.Rounded.MusicNote, null, Modifier.size(110.dp), tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
-
         item {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    currentSong.title,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.ExtraBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    currentSong.artist.ifBlank { "Artista desconhecido" },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    currentSong.album.ifBlank { "Álbum desconhecido" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(Modifier.height(10.dp))
-
-                FilledTonalButton(
-                    onClick = onToggleFavorite,
-                    shape = RoundedCornerShape(22.dp)
-                ) {
-                    Icon(
-                        if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(currentSong.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(currentSong.artist, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(currentSong.album.ifBlank { "Álbum desconhecido" }, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                FilledTonalButton(onClick = onToggleFavorite, shape = RoundedCornerShape(22.dp)) {
+                    Icon(if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null, Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text(if (isFavorite) "Favorita" else "Favoritar")
                 }
             }
         }
-
         item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                LinearProgressIndicator(
-                    progress = safeProgress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(50.dp))
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        formatDuration(progressMs),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        formatDuration(currentSong.durationMs),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            Column(Modifier.fillMaxWidth()) {
+                LinearProgressIndicator(progress = { if (currentSong.durationMs > 0) progressMs.toFloat() / currentSong.durationMs.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(formatDuration(progressMs), style = MaterialTheme.typography.labelMedium)
+                    Text(formatDuration(currentSong.durationMs), style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
-
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onPrevious, modifier = Modifier.size(64.dp)) {
-                    Icon(
-                        Icons.Rounded.SkipPrevious,
-                        contentDescription = "Anterior",
-                        modifier = Modifier.size(38.dp)
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                IconButton(onClick = onPrevious) { Icon(Icons.Rounded.SkipPrevious, "Anterior", Modifier.size(38.dp)) }
+                FilledTonalButton(onClick = onPlayPause, shape = CircleShape, contentPadding = PaddingValues(26.dp)) {
+                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(36.dp))
                 }
-
-                Spacer(Modifier.width(18.dp))
-
-                FilledTonalButton(
-                    onClick = onPlayPause,
-                    shape = RoundedCornerShape(34.dp),
-                    contentPadding = PaddingValues(horizontal = 28.dp, vertical = 18.dp)
-                ) {
-                    Icon(
-                        if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = "Play/Pause",
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                Spacer(Modifier.width(18.dp))
-
-                IconButton(onClick = onNext, modifier = Modifier.size(64.dp)) {
-                    Icon(
-                        Icons.Rounded.SkipNext,
-                        contentDescription = "Próxima",
-                        modifier = Modifier.size(38.dp)
-                    )
+                IconButton(onClick = onNext) { Icon(Icons.Rounded.SkipNext, "Próxima", Modifier.size(38.dp)) }
+            }
+        }
+        item {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Modo de reprodução", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        FilledTonalButton(onClick = onToggleShuffle, shape = RoundedCornerShape(20.dp)) { Text(if (shuffleEnabled) "Aleatório ✓" else "Aleatório") }
+                        FilledTonalButton(onClick = onCycleRepeat, shape = RoundedCornerShape(20.dp)) {
+                            Text(when (repeatMode) {
+                                RepeatMode.Off -> "Repetir"
+                                RepeatMode.All -> "Repetir tudo ✓"
+                                RepeatMode.One -> "Repetir 1 ✓"
+                            })
+                        }
+                    }
                 }
             }
         }
-
         item {
-            OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        "Reprodução do sistema",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        "Esta versão adiciona favoritos offline e melhora a experiência do player.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Próximas da fila", fontWeight = FontWeight.Bold)
+                    if (queuePreview.isEmpty()) Text("A fila aparece quando houver músicas disponíveis.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    queuePreview.forEachIndexed { index, song ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${index + 1}.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(26.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(song.artist, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun MiniPlayer(currentSong: Song?, isPlaying: Boolean, onPlayPause: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit, onOpenPlayer: () -> Unit) {
+    if (currentSong == null) return
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).clickable(onClick = onOpenPlayer),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.GraphicEq, null)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(currentSong.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(currentSong.artist, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = onPrevious) { Icon(Icons.Rounded.SkipPrevious, "Anterior") }
+            IconButton(onClick = onPlayPause) { Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null) }
+            IconButton(onClick = onNext) { Icon(Icons.Rounded.SkipNext, "Próxima") }
         }
     }
 }
@@ -1401,88 +891,41 @@ fun SettingsScreen(
     notificationGranted: Boolean,
     songsCount: Int,
     currentSong: Song?,
+    shuffleEnabled: Boolean,
+    repeatMode: RepeatMode,
+    favoritesCount: Int,
     onRequestPermission: () -> Unit,
     onRequestNotification: () -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
-            Text(
-                text = "Ajustes",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "Sonorie v0.2.4",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
+            Text("Sonorie v0.2.5", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-
         item {
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        "Status do app",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    SettingLine("Material", "Material 3 / Material You")
-                    SettingLine("Modo principal", "Offline")
-                    SettingLine("Permissão de áudio", if (permissionGranted) "Permitida" else "Pendente")
-                    SettingLine("Notificação", if (notificationGranted) "Permitida" else "Pendente ou não exigida")
-                    SettingLine("Músicas locais", songsCount.toString())
-                    SettingLine("Tocando agora", currentSong?.title ?: "Nenhuma")
-
-                    if (!permissionGranted) {
-                        FilledTonalButton(
-                            onClick = onRequestPermission,
-                            shape = RoundedCornerShape(22.dp)
-                        ) {
-                            Text("Permitir acesso às músicas")
-                        }
-                    }
-
-                    if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        FilledTonalButton(
-                            onClick = onRequestNotification,
-                            shape = RoundedCornerShape(22.dp)
-                        ) {
-                            Text("Permitir notificações")
-                        }
-                    }
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Status do app", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    SettingsRow("Material", "Material 3 / Material You")
+                    SettingsRow("Modo principal", "Offline")
+                    SettingsRow("Permissão de áudio", if (permissionGranted) "Permitida" else "Pendente")
+                    SettingsRow("Notificação", if (notificationGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) "Permitida" else "Pendente")
+                    SettingsRow("Músicas locais", songsCount.toString())
+                    SettingsRow("Favoritas", favoritesCount.toString())
+                    SettingsRow("Aleatório", if (shuffleEnabled) "Ativado" else "Desativado")
+                    SettingsRow("Repetir", when (repeatMode) { RepeatMode.Off -> "Desativado"; RepeatMode.All -> "Todas"; RepeatMode.One -> "Uma" })
+                    SettingsRow("Tocando agora", currentSong?.title ?: "Nada tocando")
                 }
             }
         }
-
+        if (!permissionGranted) item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
+        if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) item { FilledTonalButton(onClick = onRequestNotification) { Text("Permitir notificação") } }
         item {
-            ElevatedCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "Próxima evolução",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "v0.2.5: fila de reprodução, tocar aleatório e repetir.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Próxima evolução", fontWeight = FontWeight.Bold)
+                    Text("v0.2.6: refinamento visual do Player, mini-player e ajuste fino de sincronização.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1490,342 +933,57 @@ fun SettingsScreen(
 }
 
 @Composable
-fun PermissionEmptyState(onRequestPermission: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            Icons.Rounded.LibraryMusic,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.height(18.dp))
-        Text(
-            "Permissão necessária",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            "Para funcionar offline, o Sonorie precisa ler as músicas locais do aparelho.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(20.dp))
-        FilledTonalButton(
-            onClick = onRequestPermission,
-            shape = RoundedCornerShape(22.dp)
-        ) {
-            Text("Permitir músicas")
+fun SettingsRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    HorizontalDivider()
+}
+
+@Composable
+fun StatCard(modifier: Modifier = Modifier, title: String, value: String) {
+    ElevatedCard(modifier = modifier, shape = RoundedCornerShape(26.dp)) {
+        Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
 
 @Composable
-fun EmptyMusicState() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            Icons.Rounded.Album,
-            contentDescription = null,
-            modifier = Modifier.size(80.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.height(18.dp))
-        Text(
-            "Nenhuma música encontrada",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            "Coloque arquivos de áudio no aparelho e abra o Sonorie novamente.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-fun SongItem(
-    song: Song,
-    isCurrent: Boolean,
-    isFavorite: Boolean,
-    onToggleFavorite: () -> Unit,
-    onClick: () -> Unit
-) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (isCurrent) {
-                MaterialTheme.colorScheme.secondaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            }
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-
-            Spacer(Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = song.artist.ifBlank { "Artista desconhecido" },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = formatDuration(song.durationMs),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    contentDescription = "Favoritar",
-                    tint = if (isFavorite) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-            }
-
-            IconButton(onClick = onClick) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = "Tocar")
-            }
-        }
-    }
+fun SectionTitle(title: String) {
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 }
 
 @Composable
 fun SongCompactItem(song: Song) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            Icons.Rounded.MusicNote,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                song.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                song.artist.ifBlank { "Artista desconhecido" },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall
-            )
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(18.dp))
+        Column {
+            Text(song.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(song.artist, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-    }
-}
-
-@Composable
-fun MiniPlayer(
-    currentSong: Song?,
-    isPlaying: Boolean,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onOpenPlayer: () -> Unit
-) {
-    if (currentSong == null) return
-
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clickable(onClick = onOpenPlayer),
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Rounded.GraphicEq,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    currentSong.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-                Text(
-                    currentSong.artist.ifBlank { "Artista desconhecido" },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
-                    style = MaterialTheme.typography.bodySmall
-                )
-            }
-
-            IconButton(onClick = onPrevious) {
-                Icon(
-                    Icons.Rounded.SkipPrevious,
-                    contentDescription = "Anterior",
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
-
-            IconButton(onClick = onPlayPause) {
-                Icon(
-                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = "Play/Pause",
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
-
-            IconButton(onClick = onNext) {
-                Icon(
-                    Icons.Rounded.SkipNext,
-                    contentDescription = "Próxima",
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 4.dp)
-    )
-}
-
-@Composable
-fun StatCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String
-) {
-    ElevatedCard(
-        modifier = modifier,
-        shape = RoundedCornerShape(26.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold
-            )
-        }
-    }
-}
-
-@Composable
-fun SettingLine(label: String, value: String) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider()
-    }
-}
-
-fun requiredAudioPermission(): String {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        Manifest.permission.READ_MEDIA_AUDIO
-    } else {
-        Manifest.permission.READ_EXTERNAL_STORAGE
     }
 }
 
 fun hasAudioPermission(context: Context): Boolean {
-    return ContextCompat.checkSelfPermission(
-        context,
-        requiredAudioPermission()
-    ) == PackageManager.PERMISSION_GRANTED
+    return ContextCompat.checkSelfPermission(context, requiredAudioPermission()) == PackageManager.PERMISSION_GRANTED
 }
 
 fun hasNotificationPermission(context: Context): Boolean {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
-    } else {
-        true
-    }
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    } else true
+}
+
+fun requiredAudioPermission(): String {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
 }
 
 fun loadLocalSongs(context: Context): List<Song> {
-    val songs = mutableListOf<Song>()
-    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-
+    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL) else MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
     val projection = arrayOf(
         MediaStore.Audio.Media._ID,
         MediaStore.Audio.Media.TITLE,
@@ -1834,59 +992,65 @@ fun loadLocalSongs(context: Context): List<Song> {
         MediaStore.Audio.Media.ALBUM_ID,
         MediaStore.Audio.Media.DURATION
     )
-
-    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-    val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
-
-    context.contentResolver.query(
-        collection,
-        projection,
-        selection,
-        null,
-        sortOrder
-    )?.use { cursor ->
+    val songs = mutableListOf<Song>()
+    context.contentResolver.query(collection, projection, "${MediaStore.Audio.Media.IS_MUSIC} != 0", null, "${MediaStore.Audio.Media.DATE_ADDED} DESC")?.use { cursor ->
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
         val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
         val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
         val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
         val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
         val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idColumn)
-            val title = cursor.getString(titleColumn) ?: "Sem título"
-            val artist = cursor.getString(artistColumn) ?: "Artista desconhecido"
-            val album = cursor.getString(albumColumn) ?: "Álbum desconhecido"
             val albumId = cursor.getLong(albumIdColumn)
             val duration = cursor.getLong(durationColumn)
-            val uri = ContentUris.withAppendedId(collection, id)
-            val albumArtUri = if (albumId > 0L) {
-                ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
-            } else {
-                null
-            }
-
-            if (duration > 0) {
+            if (duration > 0L) {
                 songs.add(
                     Song(
                         id = id,
-                        title = title,
-                        artist = artist,
-                        album = album,
+                        title = cursor.getString(titleColumn) ?: "Sem título",
+                        artist = cursor.getString(artistColumn) ?: "Artista desconhecido",
+                        album = cursor.getString(albumColumn) ?: "Álbum desconhecido",
                         durationMs = duration,
-                        uri = uri,
-                        albumArtUri = albumArtUri
+                        uri = ContentUris.withAppendedId(collection, id),
+                        albumArtUri = if (albumId > 0L) ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId) else null
                     )
                 )
             }
         }
     }
-
     return songs
 }
 
 fun formatDuration(durationMs: Long): String {
-    val minutes = TimeUnit.MILLISECONDS.toMinutes(durationMs.coerceAtLeast(0L))
-    val seconds = TimeUnit.MILLISECONDS.toSeconds(durationMs.coerceAtLeast(0L)) % 60
+    val safe = durationMs.coerceAtLeast(0L)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(safe)
+    val seconds = TimeUnit.MILLISECONDS.toSeconds(safe) % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+fun loadFavoriteSongIds(context: Context): Set<Long> {
+    val prefs = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
+    return prefs.getStringSet(SONORIE_FAVORITES_KEY, emptySet())?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+}
+
+fun saveFavoriteSongIds(context: Context, ids: Set<Long>) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putStringSet(SONORIE_FAVORITES_KEY, ids.map { it.toString() }.toSet()).apply()
+}
+
+fun loadShuffleEnabled(context: Context): Boolean {
+    return context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).getBoolean(SONORIE_SHUFFLE_KEY, false)
+}
+
+fun saveShuffleEnabled(context: Context, enabled: Boolean) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(SONORIE_SHUFFLE_KEY, enabled).apply()
+}
+
+fun loadRepeatMode(context: Context): RepeatMode {
+    val raw = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).getString(SONORIE_REPEAT_KEY, RepeatMode.Off.name)
+    return runCatching { RepeatMode.valueOf(raw ?: RepeatMode.Off.name) }.getOrDefault(RepeatMode.Off)
+}
+
+fun saveRepeatMode(context: Context, mode: RepeatMode) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putString(SONORIE_REPEAT_KEY, mode.name).apply()
 }

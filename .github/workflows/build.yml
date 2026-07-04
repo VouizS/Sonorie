@@ -42,5 +42,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Sonorie-v0.3.0-r1-debug-apk
+          name: Sonorie-v0.3.1-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk

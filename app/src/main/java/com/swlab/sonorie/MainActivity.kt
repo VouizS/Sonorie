@@ -56,6 +56,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
@@ -419,6 +424,7 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
     val context = LocalContext.current
     val songs = remember { mutableStateListOf<Song>() }
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
+    var bottomDockVisible by remember { mutableStateOf(true) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var favoriteIds by remember { mutableStateOf(loadFavoriteSongIds(context)) }
@@ -558,22 +564,18 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
             )
         },
         bottomBar = {
-            Column {
-                MiniPlayer(
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                    onPlayPause = { togglePlayPause(askNotificationRequest) },
-                    onNext = { playNext(askNotificationRequest) },
-                    onPrevious = { playPrevious(askNotificationRequest) },
-                    onOpenPlayer = { selectedTab = SonorieTab.Player }
-                )
-                NavigationBar {
-                    NavigationBarItem(selectedTab == SonorieTab.Home, { selectedTab = SonorieTab.Home }, { Icon(Icons.Rounded.Home, null) }, label = { Text("Início") })
-                    NavigationBarItem(selectedTab == SonorieTab.Library, { selectedTab = SonorieTab.Library }, { Icon(Icons.Rounded.LibraryMusic, null) }, label = { Text("Biblioteca") })
-                    NavigationBarItem(selectedTab == SonorieTab.Player, { selectedTab = SonorieTab.Player }, { Icon(Icons.Rounded.PlayCircle, null) }, label = { Text("Player") })
-                    NavigationBarItem(selectedTab == SonorieTab.Settings, { selectedTab = SonorieTab.Settings }, { Icon(Icons.Rounded.Settings, null) }, label = { Text("Ajustes") })
-                }
-            }
+            SonorieBottomDock(
+                bottomDockVisible = bottomDockVisible,
+                onBottomDockVisibleChange = { bottomDockVisible = it },
+                selectedTab = selectedTab,
+                onTabChange = { selectedTab = it },
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+                onPlayPause = { togglePlayPause(askNotificationRequest) },
+                onNext = { playNext(askNotificationRequest) },
+                onPrevious = { playPrevious(askNotificationRequest) },
+                onOpenPlayer = { selectedTab = SonorieTab.Player }
+            )
         }
     ) { padding ->
         Surface(Modifier.fillMaxSize().padding(padding)) {
@@ -656,7 +658,7 @@ fun HomeScreen(
         }
         item { SectionTitle("Cápsulas") }
         item {
-            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.GraphicEq, null, tint = MaterialTheme.colorScheme.primary)
@@ -758,14 +760,31 @@ fun LibraryScreen(
 
 @Composable
 fun SongItem(song: Song, isCurrent: Boolean, isFavorite: Boolean, onToggleFavorite: () -> Unit, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(28.dp)
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(onClick = onClick),
+        shape = shape,
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (isCurrent) 6.dp else 2.dp, pressedElevation = 10.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = if (isCurrent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        )
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(54.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
-                Icon(if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
+            Box(
+                Modifier
+                    .size(54.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isCurrent) 0.18f else 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote,
+                    null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
@@ -774,7 +793,11 @@ fun SongItem(song: Song, isCurrent: Boolean, isFavorite: Boolean, onToggleFavori
                 Text(formatDuration(song.durationMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = onToggleFavorite) {
-                Icon(if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favoritar", tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(
+                    if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    "Favoritar",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             IconButton(onClick = onClick) { Icon(Icons.Rounded.PlayArrow, "Tocar") }
         }
@@ -892,14 +915,151 @@ fun PlayerScreen(
 }
 
 @Composable
-fun MiniPlayer(currentSong: Song?, isPlaying: Boolean, onPlayPause: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit, onOpenPlayer: () -> Unit) {
+fun SonorieBottomDock(
+    bottomDockVisible: Boolean,
+    onBottomDockVisibleChange: (Boolean) -> Unit,
+    selectedTab: SonorieTab,
+    onTabChange: (SonorieTab) -> Unit,
+    currentSong: Song?,
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onOpenPlayer: () -> Unit
+) {
+    val bottomPadding by animateDpAsState(
+        targetValue = if (bottomDockVisible) 10.dp else 4.dp,
+        animationSpec = tween(durationMillis = 220),
+        label = "sonorieBottomDockPadding"
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+        tonalElevation = 5.dp,
+        shadowElevation = 12.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = bottomPadding),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            BottomDockHandle(
+                bottomDockVisible = bottomDockVisible,
+                onBottomDockVisibleChange = onBottomDockVisibleChange
+            )
+
+            MiniPlayer(
+                currentSong = currentSong,
+                isPlaying = isPlaying,
+                onPlayPause = onPlayPause,
+                onNext = onNext,
+                onPrevious = onPrevious,
+                onOpenPlayer = onOpenPlayer
+            )
+
+            AnimatedVisibility(visible = bottomDockVisible) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, top = 4.dp),
+                    shape = RoundedCornerShape(30.dp),
+                    tonalElevation = 4.dp,
+                    shadowElevation = 6.dp,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                ) {
+                    NavigationBar(
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Home,
+                            onClick = { onTabChange(SonorieTab.Home) },
+                            icon = { Icon(Icons.Rounded.Home, null) },
+                            label = { Text("Início") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Library,
+                            onClick = { onTabChange(SonorieTab.Library) },
+                            icon = { Icon(Icons.Rounded.LibraryMusic, null) },
+                            label = { Text("Biblioteca") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Player,
+                            onClick = { onTabChange(SonorieTab.Player) },
+                            icon = { Icon(Icons.Rounded.PlayCircle, null) },
+                            label = { Text("Player") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Settings,
+                            onClick = { onTabChange(SonorieTab.Settings) },
+                            icon = { Icon(Icons.Rounded.Settings, null) },
+                            label = { Text("Ajustes") }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BottomDockHandle(bottomDockVisible: Boolean, onBottomDockVisibleChange: (Boolean) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .pointerInput(bottomDockVisible) {
+                var totalDrag = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                    onDragEnd = {
+                        if (totalDrag > 24f) onBottomDockVisibleChange(false)
+                        if (totalDrag < -24f) onBottomDockVisibleChange(true)
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            Modifier
+                .width(44.dp)
+                .height(5.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f))
+        )
+    }
+}
+
+@Composable
+fun MiniPlayer(
+    currentSong: Song?,
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onOpenPlayer: () -> Unit
+) {
     if (currentSong == null) return
+
+    val shape = RoundedCornerShape(28.dp)
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).clickable(onClick = onOpenPlayer),
-        shape = RoundedCornerShape(26.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(shape)
+            .clickable(onClick = onOpenPlayer),
+        shape = shape,
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 7.dp, pressedElevation = 12.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(Icons.Rounded.GraphicEq, null)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -938,10 +1098,10 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.0", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.1", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
-            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp)) {
                     Text("Status do app", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(12.dp))
@@ -961,10 +1121,10 @@ fun SettingsScreen(
         if (!permissionGranted) item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
         if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) item { FilledTonalButton(onClick = onRequestNotification) { Text("Permitir notificação") } }
         item {
-            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.1: correção do ripple quadrado nos cards e polimento visual do mini-player.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.2: refinamento da fila, melhoria de busca e ajuste fino de sincronização.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -977,7 +1137,7 @@ fun AppearanceCard(
     themePreference: ThemePreference,
     onThemePreferenceChange: (ThemePreference) -> Unit
 ) {
-    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Aparência", fontWeight = FontWeight.Bold)
             Text(

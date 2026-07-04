@@ -69,6 +69,7 @@ private const val SONORIE_PREFS = "sonorie_prefs"
 private const val SONORIE_FAVORITES_KEY = "favorite_song_ids"
 private const val SONORIE_SHUFFLE_KEY = "shuffle_enabled"
 private const val SONORIE_REPEAT_KEY = "repeat_mode"
+private const val SONORIE_THEME_KEY = "theme_preference"
 
 data class Song(
     val id: Long,
@@ -82,6 +83,7 @@ data class Song(
 
 enum class SonorieTab { Home, Library, Player, Settings }
 enum class RepeatMode { Off, All, One }
+enum class ThemePreference { System, Light, Dark }
 
 object SonoriePlaybackState {
     var currentSong by mutableStateOf<Song?>(null)
@@ -362,18 +364,37 @@ fun sendPlaybackAction(context: Context, action: String, song: Song? = null) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { SonorieTheme { SonorieApp() } }
+        setContent {
+            val context = LocalContext.current
+            var themePreference by remember { mutableStateOf(loadThemePreference(context)) }
+
+            SonorieTheme(themePreference) {
+                SonorieApp(
+                    themePreference = themePreference,
+                    onThemePreferenceChange = {
+                        themePreference = it
+                        saveThemePreference(context, it)
+                    }
+                )
+            }
+        }
     }
 }
 
 @Composable
-fun SonorieTheme(content: @Composable () -> Unit) {
+fun SonorieTheme(themePreference: ThemePreference, content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        dynamicLightColorScheme(context)
-    } else {
-        lightColorScheme()
+    val isDark = when (themePreference) {
+        ThemePreference.System -> androidx.compose.foundation.isSystemInDarkTheme()
+        ThemePreference.Light -> false
+        ThemePreference.Dark -> true
     }
+    val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else {
+        if (isDark) darkColorScheme() else lightColorScheme()
+    }
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography(),
@@ -388,7 +409,7 @@ fun SonorieTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SonorieApp() {
+fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (ThemePreference) -> Unit) {
     val context = LocalContext.current
     val songs = remember { mutableStateListOf<Song>() }
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
@@ -582,6 +603,7 @@ fun SonorieApp() {
                 SonorieTab.Settings -> SettingsScreen(
                     permissionGranted, notificationGranted, songs.size, currentSong,
                     shuffleEnabled, repeatMode, favoriteIds.size,
+                    themePreference, onThemePreferenceChange,
                     onRequestPermission = { audioPermissionLauncher.launch(requiredAudioPermission()) },
                     onRequestNotification = askNotificationRequest
                 )
@@ -690,6 +712,12 @@ fun LibraryScreen(
         item {
             Text("Biblioteca local", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text("${songs.size} músicas encontradas no aparelho", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            AppearanceCard(
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange
+            )
         }
         if (!permissionGranted) item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
         item {
@@ -894,13 +922,15 @@ fun SettingsScreen(
     shuffleEnabled: Boolean,
     repeatMode: RepeatMode,
     favoritesCount: Int,
+    themePreference: ThemePreference,
+    onThemePreferenceChange: (ThemePreference) -> Unit,
     onRequestPermission: () -> Unit,
     onRequestNotification: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.2.5", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.0", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
@@ -908,6 +938,7 @@ fun SettingsScreen(
                     Text("Status do app", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(12.dp))
                     SettingsRow("Material", "Material 3 / Material You")
+                    SettingsRow("Tema", themeLabel(themePreference))
                     SettingsRow("Modo principal", "Offline")
                     SettingsRow("Permissão de áudio", if (permissionGranted) "Permitida" else "Pendente")
                     SettingsRow("Notificação", if (notificationGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) "Permitida" else "Pendente")
@@ -925,10 +956,62 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.2.6: refinamento visual do Player, mini-player e ajuste fino de sincronização.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.1: correção do ripple quadrado nos cards e polimento visual do mini-player.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
+    }
+}
+
+
+@Composable
+fun AppearanceCard(
+    themePreference: ThemePreference,
+    onThemePreferenceChange: (ThemePreference) -> Unit
+) {
+    OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Aparência", fontWeight = FontWeight.Bold)
+            Text(
+                "Escolha como o Sonorie deve usar o tema do aparelho.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            ThemeOptionButton(
+                label = "Usar tema do sistema",
+                selected = themePreference == ThemePreference.System,
+                onClick = { onThemePreferenceChange(ThemePreference.System) }
+            )
+            ThemeOptionButton(
+                label = "Modo claro",
+                selected = themePreference == ThemePreference.Light,
+                onClick = { onThemePreferenceChange(ThemePreference.Light) }
+            )
+            ThemeOptionButton(
+                label = "Modo escuro",
+                selected = themePreference == ThemePreference.Dark,
+                onClick = { onThemePreferenceChange(ThemePreference.Dark) }
+            )
+        }
+    }
+}
+
+@Composable
+fun ThemeOptionButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Text(if (selected) "$label ✓" else label)
+    }
+}
+
+fun themeLabel(mode: ThemePreference): String {
+    return when (mode) {
+        ThemePreference.System -> "Sistema"
+        ThemePreference.Light -> "Claro"
+        ThemePreference.Dark -> "Escuro"
     }
 }
 
@@ -1027,6 +1110,21 @@ fun formatDuration(durationMs: Long): String {
     val minutes = TimeUnit.MILLISECONDS.toMinutes(safe)
     val seconds = TimeUnit.MILLISECONDS.toSeconds(safe) % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+
+fun loadThemePreference(context: Context): ThemePreference {
+    val raw = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
+        .getString(SONORIE_THEME_KEY, ThemePreference.System.name)
+    return runCatching { ThemePreference.valueOf(raw ?: ThemePreference.System.name) }
+        .getOrDefault(ThemePreference.System)
+}
+
+fun saveThemePreference(context: Context, mode: ThemePreference) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString(SONORIE_THEME_KEY, mode.name)
+        .apply()
 }
 
 fun loadFavoriteSongIds(context: Context): Set<Long> {

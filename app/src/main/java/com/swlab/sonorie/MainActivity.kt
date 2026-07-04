@@ -88,6 +88,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -96,6 +97,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import coil.compose.AsyncImage
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 
@@ -112,6 +114,7 @@ const val EXTRA_SONG_ARTIST = "extra_song_artist"
 const val EXTRA_SONG_ALBUM = "extra_song_album"
 const val EXTRA_SONG_DURATION = "extra_song_duration"
 const val EXTRA_SONG_URI = "extra_song_uri"
+const val EXTRA_SONG_ALBUM_ART = "extra_song_album_art"
 
 const val SONORIE_NOTIFICATION_CHANNEL = "sonorie_playback"
 const val SONORIE_NOTIFICATION_ID = 2040
@@ -122,7 +125,8 @@ data class Song(
     val artist: String,
     val album: String,
     val durationMs: Long,
-    val uri: Uri
+    val uri: Uri,
+    val albumArtUri: Uri? = null
 )
 
 object SonoriePlaybackState {
@@ -253,6 +257,7 @@ class SonoriePlaybackService : Service() {
         val duration = intent.getLongExtra(EXTRA_SONG_DURATION, 0L)
         val uri = intent.getStringExtra(EXTRA_SONG_URI)?.let { Uri.parse(it) }
             ?: ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+        val albumArtUri = intent.getStringExtra(EXTRA_SONG_ALBUM_ART)?.let { Uri.parse(it) }
 
         return Song(
             id = id,
@@ -260,7 +265,8 @@ class SonoriePlaybackService : Service() {
             artist = artist,
             album = album,
             durationMs = duration,
-            uri = uri
+            uri = uri,
+            albumArtUri = albumArtUri
         )
     }
 
@@ -348,12 +354,18 @@ class SonoriePlaybackService : Service() {
     }
 
     private fun updateMetadata(song: Song) {
-        val metadata = MediaMetadataCompat.Builder()
+        val metadataBuilder = MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, song.title)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, song.artist)
             .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, song.durationMs)
-            .build()
+
+        song.albumArtUri?.let {
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ALBUM_ART_URI, it.toString())
+            metadataBuilder.putString(MediaMetadataCompat.METADATA_KEY_ART_URI, it.toString())
+        }
+
+        val metadata = metadataBuilder.build()
 
         mediaSession?.setMetadata(metadata)
     }
@@ -476,6 +488,7 @@ fun sendPlaybackAction(context: Context, action: String, song: Song? = null) {
             putExtra(EXTRA_SONG_ALBUM, song.album)
             putExtra(EXTRA_SONG_DURATION, song.durationMs)
             putExtra(EXTRA_SONG_URI, song.uri.toString())
+            putExtra(EXTRA_SONG_ALBUM_ART, song.albumArtUri?.toString())
         }
     }
 
@@ -610,11 +623,11 @@ fun SonorieApp() {
 
     LaunchedEffect(isPlaying, currentSong?.id) {
         while (isPlaying && currentSong != null) {
-            progressMs += 700L
+            progressMs += 500L
             if (progressMs > currentSong.durationMs) {
                 progressMs = currentSong.durationMs
             }
-            delay(700)
+            delay(500)
         }
     }
 
@@ -1128,12 +1141,21 @@ fun PlayerScreen(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    modifier = Modifier.size(110.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                if (currentSong.albumArtUri != null) {
+                    AsyncImage(
+                        model = currentSong.albumArtUri,
+                        contentDescription = "Capa do álbum",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        modifier = Modifier.size(110.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
@@ -1246,7 +1268,7 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "Esta versão melhora controles da tela bloqueada e aplica o ícone temporário do Sonorie.",
+                        "Esta versão adiciona capa de álbum real quando disponível e refina o progresso do player.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1276,7 +1298,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Sonorie v0.2.2",
+                text = "Sonorie v0.2.3",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1340,7 +1362,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "v0.2.3: capa de álbum real, progresso mais preciso e refinamento visual do player.",
+                        "v0.2.4: refinamento visual do player, favoritos e fila de reprodução.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1673,6 +1695,7 @@ fun loadLocalSongs(context: Context): List<Song> {
         MediaStore.Audio.Media.TITLE,
         MediaStore.Audio.Media.ARTIST,
         MediaStore.Audio.Media.ALBUM,
+        MediaStore.Audio.Media.ALBUM_ID,
         MediaStore.Audio.Media.DURATION
     )
 
@@ -1690,6 +1713,7 @@ fun loadLocalSongs(context: Context): List<Song> {
         val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
         val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
         val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+        val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
         val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
 
         while (cursor.moveToNext()) {
@@ -1697,8 +1721,14 @@ fun loadLocalSongs(context: Context): List<Song> {
             val title = cursor.getString(titleColumn) ?: "Sem título"
             val artist = cursor.getString(artistColumn) ?: "Artista desconhecido"
             val album = cursor.getString(albumColumn) ?: "Álbum desconhecido"
+            val albumId = cursor.getLong(albumIdColumn)
             val duration = cursor.getLong(durationColumn)
             val uri = ContentUris.withAppendedId(collection, id)
+            val albumArtUri = if (albumId > 0L) {
+                ContentUris.withAppendedId(Uri.parse("content://media/external/audio/albumart"), albumId)
+            } else {
+                null
+            }
 
             if (duration > 0) {
                 songs.add(
@@ -1708,7 +1738,8 @@ fun loadLocalSongs(context: Context): List<Song> {
                         artist = artist,
                         album = album,
                         durationMs = duration,
-                        uri = uri
+                        uri = uri,
+                        albumArtUri = albumArtUri
                     )
                 )
             }

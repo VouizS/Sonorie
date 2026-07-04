@@ -26,12 +26,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,6 +84,7 @@ private const val SONORIE_SHUFFLE_KEY = "shuffle_enabled"
 private const val SONORIE_REPEAT_KEY = "repeat_mode"
 private const val SONORIE_THEME_KEY = "theme_preference"
 
+@Immutable
 data class Song(
     val id: Long,
     val title: String,
@@ -424,7 +427,7 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
     val context = LocalContext.current
     val songs = remember { mutableStateListOf<Song>() }
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
-    var bottomDockVisible by remember { mutableStateOf(true) }
+    var bottomDockVisible by rememberSaveable { mutableStateOf(true) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var favoriteIds by remember { mutableStateOf(loadFavoriteSongIds(context)) }
@@ -434,7 +437,7 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
     val currentSong = SonoriePlaybackState.currentSong
     val isPlaying = SonoriePlaybackState.isPlaying
     val playbackEventVersion = SonoriePlaybackState.eventVersion
-    var progressMs by remember { mutableStateOf(SonoriePlaybackState.positionMs) }
+    var progressMs by remember { mutableLongStateOf(SonoriePlaybackState.positionMs) }
 
     fun askNotification(launcher: () -> Unit) {
         if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) launcher()
@@ -514,6 +517,11 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
         val ordered = if (base >= 0) songs.drop(base + 1) + songs.take(base) else songs
         return ordered.take(5)
     }
+
+ val queuePreviewSongs by remember(currentSong?.id, songs.size, shuffleEnabled, repeatMode) {
+  derivedStateOf { queuePreview() }
+ }
+
 
     LaunchedEffect(playbackEventVersion) { progressMs = SonoriePlaybackState.positionMs }
     LaunchedEffect(isPlaying, currentSong?.id) {
@@ -599,7 +607,7 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
                     isFavorite = currentSong?.id in favoriteIds,
                     shuffleEnabled = shuffleEnabled,
                     repeatMode = repeatMode,
-                    queuePreview = queuePreview(),
+                    queuePreview = queuePreviewSongs,
                     onToggleFavorite = { currentSong?.let { toggleFavorite(it) } },
                     onToggleShuffle = { toggleShuffle() },
                     onCycleRepeat = { cycleRepeat() },
@@ -629,7 +637,8 @@ fun HomeScreen(
     onOpenLibrary: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    val homeListState = rememberLazyListState()
+ LazyColumn(Modifier.fillMaxSize(), state = homeListState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { HeroCard(permissionGranted, songs.size, onRequestPermission, onOpenLibrary) }
         if (currentSong != null) {
             item {
@@ -670,7 +679,7 @@ fun HomeScreen(
             }
         }
         item { SectionTitle("Últimas músicas encontradas") }
-        items(songs.take(5)) { SongCompactItem(it) }
+        items(songs.take(5), key = { it.id }, contentType = { "homePreviewSong" }) { SongCompactItem(it) }
     }
 }
 
@@ -709,14 +718,27 @@ fun LibraryScreen(
     onPlaySong: (Song) -> Unit,
     onToggleFavorite: (Song) -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
-    var favoritesOnly by remember { mutableStateOf(false) }
-    val base = if (favoritesOnly) songs.filter { it.id in favoriteSongIds } else songs
-    val filtered = if (query.isBlank()) base else base.filter {
-        it.title.contains(query, true) || it.artist.contains(query, true) || it.album.contains(query, true)
-    }
+    var query by rememberSaveable { mutableStateOf("") }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+ var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+
+ val normalizedQuery = remember(query) { query.trim() }
+
+ val base = remember(favoritesOnly, songs.size, favoriteSongIds) {
+  if (favoritesOnly) songs.filter { it.id in favoriteSongIds } else songs
+ }
+
+ val filtered = remember(base, normalizedQuery) {
+  if (normalizedQuery.isBlank()) base else base.filter {
+   it.title.contains(normalizedQuery, true) ||
+    it.artist.contains(normalizedQuery, true) ||
+    it.album.contains(normalizedQuery, true)
+  }
+ }
+
+ val libraryListState = rememberLazyListState()
+
+    LazyColumn(Modifier.fillMaxSize(), state = libraryListState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text("Biblioteca local", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text("${songs.size} músicas encontradas no aparelho", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -752,7 +774,7 @@ fun LibraryScreen(
                 }
             }
         }
-        items(filtered, key = { it.id }) { song ->
+        items(filtered, key = { it.id }, contentType = { "librarySong" }) { song ->
             SongItem(song, currentSong?.id == song.id, song.id in favoriteSongIds, { onToggleFavorite(song) }, { onPlaySong(song) })
         }
     }
@@ -832,7 +854,8 @@ fun PlayerScreen(
         return
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    val playerListState = rememberLazyListState()
+ LazyColumn(Modifier.fillMaxSize(), state = playerListState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             Box(
                 Modifier.fillMaxWidth().height(290.dp).clip(RoundedCornerShape(34.dp)).background(
@@ -861,7 +884,7 @@ fun PlayerScreen(
         }
         item {
             Column(Modifier.fillMaxWidth()) {
-                LinearProgressIndicator(progress = { if (currentSong.durationMs > 0) progressMs.toFloat() / currentSong.durationMs.toFloat() else 0f }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { if (currentSong.durationMs > 0) (progressMs.toFloat() / currentSong.durationMs.toFloat()).coerceIn(0f, 1f) else 0f }, modifier = Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(formatDuration(progressMs), style = MaterialTheme.typography.labelMedium)
                     Text(formatDuration(currentSong.durationMs), style = MaterialTheme.typography.labelMedium)
@@ -1124,7 +1147,7 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.2: refinamento da fila, melhoria de busca e ajuste fino de sincronização.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.3: biblioteca por artista/álbum, cápsulas reais e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

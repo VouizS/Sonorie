@@ -964,7 +964,7 @@ fun SonorieBottomDock(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, top = 4.dp),
+                        .padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 0.dp),
                     shape = RoundedCornerShape(30.dp),
                     tonalElevation = 4.dp,
                     shadowElevation = 6.dp,
@@ -1098,7 +1098,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.1-r2", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.1-r3-r3", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {

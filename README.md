@@ -19,6 +19,7 @@ Sonorie v0.3.0 — Theme System
 - Modo claro
 - Modo escuro
 - Tema do sistema
+- Preferência de aparência salva no aparelho
 - Build APK via GitHub Actions
 
 ## Package

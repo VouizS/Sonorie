@@ -50,6 +50,12 @@ import coil.compose.AsyncImage
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 import kotlinx.coroutines.delay
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
@@ -713,12 +719,6 @@ fun LibraryScreen(
             Text("Biblioteca local", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text("${songs.size} músicas encontradas no aparelho", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        item {
-            AppearanceCard(
-                themePreference = themePreference,
-                onThemePreferenceChange = onThemePreferenceChange
-            )
-        }
         if (!permissionGranted) item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
         item {
             OutlinedTextField(
@@ -928,6 +928,14 @@ fun SettingsScreen(
     onRequestNotification: () -> Unit
 ) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            AppearanceCard(
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange
+            )
+        }
+
+
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text("Sonorie v0.3.0", color = MaterialTheme.colorScheme.onSurfaceVariant)

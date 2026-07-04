@@ -1028,7 +1028,7 @@ fun BottomDockHandle(bottomDockVisible: Boolean, onBottomDockVisibleChange: (Boo
             Modifier
                 .width(44.dp)
                 .height(5.dp)
-                .clip(RoundedCornerShape(50))
+                .clip(RoundedCornerShape(50.dp))
                 .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f))
         )
     }
@@ -1098,7 +1098,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.1", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.1-r2", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {

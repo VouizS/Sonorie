@@ -43,6 +43,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MusicNote
@@ -510,6 +512,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private const val SONORIE_PREFS = "sonorie_prefs"
+private const val SONORIE_FAVORITES_KEY = "favorite_song_ids"
+
+fun loadFavoriteSongIds(context: Context): Set<Long> {
+    val prefs = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
+    return prefs.getStringSet(SONORIE_FAVORITES_KEY, emptySet())
+        ?.mapNotNull { it.toLongOrNull() }
+        ?.toSet()
+        ?: emptySet()
+}
+
+fun saveFavoriteSongIds(context: Context, ids: Set<Long>) {
+    val prefs = context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE)
+    prefs.edit()
+        .putStringSet(SONORIE_FAVORITES_KEY, ids.map { it.toString() }.toSet())
+        .apply()
+}
+
 @Composable
 fun SonorieTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
@@ -542,6 +562,17 @@ fun SonorieApp() {
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
+    var favoriteSongIds by remember { mutableStateOf(loadFavoriteSongIds(context)) }
+
+    fun toggleFavorite(song: Song) {
+        val nextFavorites = if (song.id in favoriteSongIds) {
+            favoriteSongIds - song.id
+        } else {
+            favoriteSongIds + song.id
+        }
+        favoriteSongIds = nextFavorites
+        saveFavoriteSongIds(context, nextFavorites)
+    }
     val currentSong = SonoriePlaybackState.currentSong
     val isPlaying = SonoriePlaybackState.isPlaying
     val playbackEventVersion = SonoriePlaybackState.eventVersion
@@ -747,11 +778,15 @@ fun SonorieApp() {
                         songs = songs,
                         permissionGranted = permissionGranted,
                         currentSong = currentSong,
+                        favoriteSongIds = favoriteSongIds,
                         onRequestPermission = {
                             audioPermissionLauncher.launch(requiredAudioPermission())
                         },
                         onPlaySong = { song ->
                             playSong(song, askNotification)
+                        },
+                        onToggleFavorite = { song ->
+                            toggleFavorite(song)
                         }
                     )
 
@@ -759,6 +794,10 @@ fun SonorieApp() {
                         currentSong = currentSong,
                         progressMs = progressMs,
                         isPlaying = isPlaying,
+                        isFavorite = currentSong?.id in favoriteSongIds,
+                        onToggleFavorite = {
+                            currentSong?.let { toggleFavorite(it) }
+                        },
                         onPlayPause = { togglePlayPause(askNotification) },
                         onNext = { playNext(askNotification) },
                         onPrevious = { playPrevious(askNotification) },
@@ -991,10 +1030,13 @@ fun LibraryScreen(
     songs: List<Song>,
     permissionGranted: Boolean,
     currentSong: Song?,
+    favoriteSongIds: Set<Long>,
     onRequestPermission: () -> Unit,
-    onPlaySong: (Song) -> Unit
+    onPlaySong: (Song) -> Unit,
+    onToggleFavorite: (Song) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var showFavoritesOnly by remember { mutableStateOf(false) }
 
     if (!permissionGranted) {
         PermissionEmptyState(onRequestPermission)
@@ -1006,10 +1048,16 @@ fun LibraryScreen(
         return
     }
 
-    val filteredSongs = if (searchQuery.isBlank()) {
-        songs
+    val baseSongs = if (showFavoritesOnly) {
+        songs.filter { it.id in favoriteSongIds }
     } else {
-        songs.filter {
+        songs
+    }
+
+    val filteredSongs = if (searchQuery.isBlank()) {
+        baseSongs
+    } else {
+        baseSongs.filter {
             it.title.contains(searchQuery, ignoreCase = true) ||
                 it.artist.contains(searchQuery, ignoreCase = true) ||
                 it.album.contains(searchQuery, ignoreCase = true)
@@ -1048,7 +1096,34 @@ fun LibraryScreen(
                 }
             )
 
-            if (searchQuery.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledTonalButton(
+                    onClick = { showFavoritesOnly = false },
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Text(if (showFavoritesOnly) "Todas" else "Todas ✓")
+                }
+
+                FilledTonalButton(
+                    onClick = { showFavoritesOnly = true },
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (showFavoritesOnly) "Favoritas ✓" else "Favoritas (${favoriteSongIds.size})")
+                }
+            }
+
+            if (searchQuery.isNotBlank() || showFavoritesOnly) {
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "${filteredSongs.size} resultado(s)",
@@ -1060,10 +1135,36 @@ fun LibraryScreen(
             Spacer(Modifier.height(8.dp))
         }
 
+        if (filteredSongs.isEmpty() && showFavoritesOnly) {
+            item {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            "Nenhuma favorita ainda",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            "Toque no coração de uma música para guardar aqui.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
         items(filteredSongs, key = { it.id }) { song ->
             SongItem(
                 song = song,
                 isCurrent = currentSong?.id == song.id,
+                isFavorite = song.id in favoriteSongIds,
+                onToggleFavorite = { onToggleFavorite(song) },
                 onClick = { onPlaySong(song) }
             )
         }
@@ -1075,6 +1176,8 @@ fun PlayerScreen(
     currentSong: Song?,
     progressMs: Long,
     isPlaying: Boolean,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -1182,6 +1285,21 @@ fun PlayerScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                Spacer(Modifier.height(10.dp))
+
+                FilledTonalButton(
+                    onClick = onToggleFavorite,
+                    shape = RoundedCornerShape(22.dp)
+                ) {
+                    Icon(
+                        if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isFavorite) "Favorita" else "Favoritar")
+                }
             }
         }
 
@@ -1268,7 +1386,7 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "Esta versão adiciona capa de álbum real quando disponível e refina o progresso do player.",
+                        "Esta versão adiciona favoritos offline e melhora a experiência do player.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1298,7 +1416,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Sonorie v0.2.3",
+                text = "Sonorie v0.2.4",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1362,7 +1480,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "v0.2.4: refinamento visual do player, favoritos e fila de reprodução.",
+                        "v0.2.5: fila de reprodução, tocar aleatório e repetir.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1437,7 +1555,13 @@ fun EmptyMusicState() {
 }
 
 @Composable
-fun SongItem(song: Song, isCurrent: Boolean, onClick: () -> Unit) {
+fun SongItem(
+    song: Song,
+    isCurrent: Boolean,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    onClick: () -> Unit
+) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -1490,6 +1614,18 @@ fun SongItem(song: Song, isCurrent: Boolean, onClick: () -> Unit) {
                     text = formatDuration(song.durationMs),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                    contentDescription = "Favoritar",
+                    tint = if (isFavorite) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
 

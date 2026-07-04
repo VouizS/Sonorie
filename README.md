@@ -4,7 +4,7 @@ Sonorie é um reprodutor de música offline moderno criado com Kotlin, Jetpack C
 
 ## Versão atual
 
-Sonorie v0.2.3 — Album Art + Progress Refinement
+Sonorie v0.2.4 — Favorites + Player Polish
 
 ## Recursos já validados
 
@@ -24,6 +24,8 @@ Sonorie v0.2.3 — Album Art + Progress Refinement
 - Sincronização entre serviço/notificação/lockscreen e UI do app
 - Ícone temporário SW aplicado no launcher
 - Capa de álbum real quando disponível
+- Favoritos offline persistentes
+- Filtro de favoritos na biblioteca
 - Build APK via GitHub Actions
 
 ## Package

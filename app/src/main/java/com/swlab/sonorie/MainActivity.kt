@@ -160,6 +160,31 @@ class SonoriePlaybackService : Service() {
 
         player = ExoPlayer.Builder(this).build()
         mediaSession = MediaSessionCompat(this, "SonoriePlaybackSession").apply {
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() {
+                    if (!isPlayingState) {
+                        togglePlayback()
+                    }
+                }
+
+                override fun onPause() {
+                    if (isPlayingState) {
+                        pausePlayback()
+                    }
+                }
+
+                override fun onSkipToNext() {
+                    playNext()
+                }
+
+                override fun onSkipToPrevious() {
+                    playPrevious()
+                }
+
+                override fun onStop() {
+                    stopPlayback()
+                }
+            })
             isActive = true
         }
     }
@@ -252,7 +277,7 @@ class SonoriePlaybackService : Service() {
         player?.prepare()
         player?.play()
 
-        syncUiState()
+        forceSystemPlaybackRefresh()
         showNotification(song)
     }
 
@@ -265,7 +290,7 @@ class SonoriePlaybackService : Service() {
             isPlayingState = true
             player?.play()
             updatePlaybackState(true)
-            syncUiState()
+            forceSystemPlaybackRefresh()
             showNotification(song)
         }
     }
@@ -276,7 +301,7 @@ class SonoriePlaybackService : Service() {
         isPlayingState = false
         player?.pause()
         updatePlaybackState(false)
-        syncUiState()
+        forceSystemPlaybackRefresh()
         showNotification(song)
     }
 
@@ -354,6 +379,12 @@ class SonoriePlaybackService : Service() {
             .build()
 
         mediaSession?.setPlaybackState(playbackState)
+    }
+
+    private fun forceSystemPlaybackRefresh() {
+        currentSong?.let { updateMetadata(it) }
+        updatePlaybackState(isPlayingState)
+        syncUiState()
     }
 
     private fun showNotification(song: Song) {
@@ -1215,7 +1246,7 @@ fun PlayerScreen(
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        "Esta versão sincroniza melhor a tela do app com ações feitas pela notificação e tela bloqueada.",
+                        "Esta versão melhora controles da tela bloqueada e aplica o ícone temporário do Sonorie.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1245,7 +1276,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Sonorie v0.2.1",
+                text = "Sonorie v0.2.2",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1309,7 +1340,7 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "v0.2.2: capa de álbum real, progresso mais preciso e refinamento visual do player.",
+                        "v0.2.3: capa de álbum real, progresso mais preciso e refinamento visual do player.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

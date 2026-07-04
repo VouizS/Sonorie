@@ -52,6 +52,7 @@ import coil.compose.AsyncImage
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 import kotlinx.coroutines.delay
+import androidx.compose.ui.draw.alpha
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -59,6 +60,8 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -428,6 +431,18 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
     val songs = remember { mutableStateListOf<Song>() }
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var bottomDockVisible by rememberSaveable { mutableStateOf(true) }
+ var bottomHandleVisible by rememberSaveable { mutableStateOf(false) }
+
+ LaunchedEffect(bottomHandleVisible) {
+  if (bottomHandleVisible) {
+   delay(6000)
+   bottomHandleVisible = false
+  }
+ }
+
+ LaunchedEffect(bottomDockVisible) {
+  bottomHandleVisible = true
+ }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var favoriteIds by remember { mutableStateOf(loadFavoriteSongIds(context)) }
@@ -969,7 +984,9 @@ fun SonorieBottomDock(
                 .padding(top = 8.dp, bottom = bottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            BottomDockHandle(
+            AnimatedVisibility(visible = bottomHandleVisible, enter = fadeIn(), exit = fadeOut()) {
+             BottomDockHandle(
+            }
                 bottomDockVisible = bottomDockVisible,
                 onBottomDockVisibleChange = onBottomDockVisibleChange
             )
@@ -1147,7 +1164,7 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.3: biblioteca por artista/álbum, cápsulas reais e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.3: organização por artista/álbum, cápsulas reais e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

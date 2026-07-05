@@ -66,6 +66,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
@@ -734,35 +736,85 @@ fun LibraryScreen(
     onToggleFavorite: (Song) -> Unit
 ) {
     var query by rememberSaveable { mutableStateOf("") }
+    var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+    var libraryMode by rememberSaveable { mutableStateOf("musicas") }
+    var selectedArtist by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedAlbum by rememberSaveable { mutableStateOf<String?>(null) }
 
- var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+    fun cleanMeta(value: String, fallback: String): String {
+        val cleaned = value.trim()
+        return if (cleaned.isBlank() || cleaned.equals("<unknown>", true) || cleaned.equals("unknown", true)) fallback else cleaned
+    }
 
- val normalizedQuery = remember(query) { query.trim() }
+    val normalizedQuery = remember(query) { query.trim() }
 
- val base = remember(favoritesOnly, songs.size, favoriteSongIds) {
-  if (favoritesOnly) songs.filter { it.id in favoriteSongIds } else songs
- }
+    val base = remember(songs, favoritesOnly, favoriteSongIds) {
+        if (favoritesOnly) songs.filter { it.id in favoriteSongIds } else songs
+    }
 
- val filtered = remember(base, normalizedQuery) {
-  if (normalizedQuery.isBlank()) base else base.filter {
-   it.title.contains(normalizedQuery, true) ||
-    it.artist.contains(normalizedQuery, true) ||
-    it.album.contains(normalizedQuery, true)
-  }
- }
+    val searched = remember(base, normalizedQuery) {
+        if (normalizedQuery.isBlank()) {
+            base
+        } else {
+            base.filter {
+                it.title.contains(normalizedQuery, true) ||
+                    it.artist.contains(normalizedQuery, true) ||
+                    it.album.contains(normalizedQuery, true)
+            }
+        }
+    }
 
- val libraryListState = rememberLazyListState()
+    val artistGroups = remember(searched) {
+        searched
+            .groupBy { cleanMeta(it.artist, "Artista desconhecido") }
+            .map { it.key to it.value }
+            .sortedBy { it.first.lowercase() }
+    }
 
-    LazyColumn(Modifier.fillMaxSize(), state = libraryListState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val albumGroups = remember(searched) {
+        searched
+            .groupBy { cleanMeta(it.album, "Álbum desconhecido") }
+            .map { it.key to it.value }
+            .sortedBy { it.first.lowercase() }
+    }
+
+    val selectedArtistSongs = remember(searched, selectedArtist) {
+        selectedArtist?.let { artist ->
+            searched.filter { cleanMeta(it.artist, "Artista desconhecido") == artist }
+        } ?: emptyList()
+    }
+
+    val selectedAlbumSongs = remember(searched, selectedAlbum) {
+        selectedAlbum?.let { album ->
+            searched.filter { cleanMeta(it.album, "Álbum desconhecido") == album }
+        } ?: emptyList()
+    }
+
+    val libraryListState = rememberLazyListState()
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        state = libraryListState,
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         item {
             Text("Biblioteca local", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
             Text("${songs.size} músicas encontradas no aparelho", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (!permissionGranted) item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
+
+        if (!permissionGranted) {
+            item { FilledTonalButton(onClick = onRequestPermission) { Text("Permitir músicas") } }
+        }
+
         item {
             OutlinedTextField(
                 value = query,
-                onValueChange = { query = it },
+                onValueChange = {
+                    query = it
+                    selectedArtist = null
+                    selectedAlbum = null
+                },
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Rounded.Search, null) },
                 placeholder = { Text("Buscar música, artista ou álbum") },
@@ -770,27 +822,191 @@ fun LibraryScreen(
                 shape = RoundedCornerShape(24.dp)
             )
         }
+
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                FilledTonalButton({ favoritesOnly = false }, shape = RoundedCornerShape(18.dp)) { Text(if (favoritesOnly) "Todas" else "Todas ✓") }
-                FilledTonalButton({ favoritesOnly = true }, shape = RoundedCornerShape(18.dp)) {
-                    Icon(Icons.Rounded.Favorite, null, Modifier.size(18.dp))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                LibraryModeButton(
+                    selected = libraryMode == "musicas" && !favoritesOnly,
+                    text = if (libraryMode == "musicas" && !favoritesOnly) "Todas ✓" else "Todas",
+                    onClick = {
+                        libraryMode = "musicas"
+                        favoritesOnly = false
+                        selectedArtist = null
+                        selectedAlbum = null
+                    }
+                )
+
+                LibraryModeButton(
+                    selected = libraryMode == "artistas",
+                    text = if (libraryMode == "artistas") "Artistas ✓" else "Artistas",
+                    onClick = {
+                        libraryMode = "artistas"
+                        selectedArtist = null
+                        selectedAlbum = null
+                    }
+                )
+
+                LibraryModeButton(
+                    selected = libraryMode == "albuns",
+                    text = if (libraryMode == "albuns") "Álbuns ✓" else "Álbuns",
+                    onClick = {
+                        libraryMode = "albuns"
+                        selectedArtist = null
+                        selectedAlbum = null
+                    }
+                )
+
+                FilledTonalButton(
+                    onClick = {
+                        favoritesOnly = !favoritesOnly
+                        if (favoritesOnly && libraryMode == "musicas") {
+                            selectedArtist = null
+                            selectedAlbum = null
+                        }
+                    },
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Icon(
+                        if (favoritesOnly) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        null,
+                        Modifier.size(18.dp)
+                    )
                     Spacer(Modifier.width(6.dp))
                     Text(if (favoritesOnly) "Favoritas ✓" else "Favoritas (${favoriteSongIds.size})")
                 }
             }
         }
-        if (query.isNotBlank() || favoritesOnly) item { Text("${filtered.size} resultado(s)", style = MaterialTheme.typography.labelMedium) }
-        if (filtered.isEmpty() && favoritesOnly) item {
-            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("Nenhuma favorita ainda", fontWeight = FontWeight.Bold)
-                    Text("Toque no coração de uma música para guardar aqui.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        if (query.isNotBlank() || favoritesOnly || libraryMode != "musicas") {
+            val countText = when {
+                libraryMode == "artistas" && selectedArtist == null -> "${artistGroups.size} artista(s)"
+                libraryMode == "albuns" && selectedAlbum == null -> "${albumGroups.size} álbum(ns)"
+                libraryMode == "artistas" && selectedArtist != null -> "${selectedArtistSongs.size} música(s)"
+                libraryMode == "albuns" && selectedAlbum != null -> "${selectedAlbumSongs.size} música(s)"
+                else -> "${searched.size} resultado(s)"
+            }
+            item { Text(countText, style = MaterialTheme.typography.labelMedium) }
+        }
+
+        if (favoritesOnly && searched.isEmpty()) {
+            item {
+                OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                    Column(Modifier.padding(18.dp)) {
+                        Text("Nenhuma favorita ainda", fontWeight = FontWeight.Bold)
+                        Text("Toque no coração de uma música para guardar aqui.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
-        items(filtered, key = { it.id }, contentType = { "librarySong" }) { song ->
-            SongItem(song, currentSong?.id == song.id, song.id in favoriteSongIds, { onToggleFavorite(song) }, { onPlaySong(song) })
+
+        when (libraryMode) {
+            "artistas" -> {
+                if (selectedArtist == null) {
+                    items(artistGroups, key = { it.first }, contentType = { "artistGroup" }) { group ->
+                        LibraryGroupItem(
+                            title = group.first,
+                            subtitle = "${group.second.size} música(s)",
+                            detail = group.second.firstOrNull()?.album?.let { cleanMeta(it, "Sem álbum principal") } ?: "Sem álbum principal",
+                            kind = "artist",
+                            onClick = { selectedArtist = group.first }
+                        )
+                    }
+                } else {
+                    item {
+                        FilledTonalButton(
+                            onClick = { selectedArtist = null },
+                            shape = RoundedCornerShape(18.dp)
+                        ) {
+                            Text("← Artistas")
+                        }
+                    }
+                    items(selectedArtistSongs, key = { it.id }, contentType = { "artistSong" }) { song ->
+                        SongItem(song, currentSong?.id == song.id, song.id in favoriteSongIds, { onToggleFavorite(song) }, { onPlaySong(song) })
+                    }
+                }
+            }
+
+            "albuns" -> {
+                if (selectedAlbum == null) {
+                    items(albumGroups, key = { it.first }, contentType = { "albumGroup" }) { group ->
+                        LibraryGroupItem(
+                            title = group.first,
+                            subtitle = "${group.second.size} música(s)",
+                            detail = group.second.firstOrNull()?.artist?.let { cleanMeta(it, "Artista desconhecido") } ?: "Artista desconhecido",
+                            kind = "album",
+                            onClick = { selectedAlbum = group.first }
+                        )
+                    }
+                } else {
+                    item {
+                        FilledTonalButton(
+                            onClick = { selectedAlbum = null },
+                            shape = RoundedCornerShape(18.dp)
+                        ) {
+                            Text("← Álbuns")
+                        }
+                    }
+                    items(selectedAlbumSongs, key = { it.id }, contentType = { "albumSong" }) { song ->
+                        SongItem(song, currentSong?.id == song.id, song.id in favoriteSongIds, { onToggleFavorite(song) }, { onPlaySong(song) })
+                    }
+                }
+            }
+
+            else -> {
+                items(searched, key = { it.id }, contentType = { "librarySong" }) { song ->
+                    SongItem(song, currentSong?.id == song.id, song.id in favoriteSongIds, { onToggleFavorite(song) }, { onPlaySong(song) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LibraryModeButton(selected: Boolean, text: String, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+fun LibraryGroupItem(title: String, subtitle: String, detail: String, kind: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(28.dp)
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(onClick = onClick),
+        shape = shape,
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 3.dp, pressedElevation = 8.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(54.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (kind == "album") Icons.Rounded.LibraryMusic else Icons.Rounded.GraphicEq,
+                    null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(detail, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(Icons.Rounded.PlayArrow, "Abrir")
         }
     }
 }
@@ -1138,7 +1354,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.1-r3-r3-r3", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.3", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
@@ -1164,7 +1380,7 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.3: organização por artista/álbum, cápsulas reais e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.4: cápsulas musicais reais, atalhos inteligentes e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

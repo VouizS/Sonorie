@@ -68,6 +68,11 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.Search
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
@@ -665,7 +670,7 @@ fun HomeScreen(
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                 ) {
                     Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.GraphicEq, null)
+                        Icon(Icons.Rounded.MusicNote, null)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text("Continuar ouvindo", style = MaterialTheme.typography.labelMedium)
@@ -687,7 +692,7 @@ fun HomeScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.GraphicEq, null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(10.dp))
                         Text("Cápsulas musicais offline", fontWeight = FontWeight.Bold)
                     }
@@ -716,7 +721,7 @@ fun HeroCard(permissionGranted: Boolean, songsCount: Int, onRequestPermission: (
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
                 )
                 FilledTonalButton(onClick = if (permissionGranted) onOpenLibrary else onRequestPermission, shape = RoundedCornerShape(22.dp)) {
-                    Icon(if (permissionGranted) Icons.Rounded.LibraryMusic else Icons.Rounded.PlayArrow, null)
+                    Icon(if (permissionGranted) Icons.Rounded.MusicNote else Icons.Rounded.PlayArrow, null)
                     Spacer(Modifier.width(8.dp))
                     Text(if (permissionGranted) "Abrir biblioteca" else "Permitir músicas")
                 }
@@ -995,7 +1000,7 @@ fun LibraryGroupItem(title: String, subtitle: String, detail: String, kind: Stri
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    if (kind == "album") Icons.Rounded.LibraryMusic else Icons.Rounded.GraphicEq,
+                    if (kind == "album") Icons.Rounded.MusicNote else Icons.Rounded.MusicNote,
                     null,
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -1034,7 +1039,7 @@ fun SongItem(song: Song, isCurrent: Boolean, isFavorite: Boolean, onToggleFavori
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    if (isCurrent) Icons.Rounded.GraphicEq else Icons.Rounded.MusicNote,
+                    if (isCurrent) Icons.Rounded.MusicNote else Icons.Rounded.MusicNote,
                     null,
                     tint = MaterialTheme.colorScheme.primary
                 )
@@ -1239,7 +1244,7 @@ fun SonorieBottomDock(
                         NavigationBarItem(
                             selected = selectedTab == SonorieTab.Library,
                             onClick = { onTabChange(SonorieTab.Library) },
-                            icon = { Icon(Icons.Rounded.LibraryMusic, null) },
+                            icon = { Icon(Icons.Rounded.MusicNote, null) },
                             label = { Text("Biblioteca") }
                         )
                         NavigationBarItem(
@@ -1316,7 +1321,7 @@ fun MiniPlayer(
             Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Rounded.GraphicEq, null)
+            Icon(Icons.Rounded.MusicNote, null)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(currentSong.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1354,7 +1359,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.3", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.3-r1", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {

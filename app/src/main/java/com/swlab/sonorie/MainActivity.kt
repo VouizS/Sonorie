@@ -1312,10 +1312,15 @@ fun SonorieBottomDock(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = bottomPadding),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, bottom = bottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            BottomDockHandle(bottomDockVisible = bottomDockVisible, onBottomDockVisibleChange = onBottomDockVisibleChange)
+            BottomDockHandle(
+                bottomDockVisible = bottomDockVisible,
+                onBottomDockVisibleChange = onBottomDockVisibleChange
+            )
 
             MiniPlayer(
                 currentSong = currentSong,
@@ -1332,17 +1337,42 @@ fun SonorieBottomDock(
                 exit = fadeOut(animationSpec = tween(durationMillis = 140))
             ) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp, end = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 4.dp, end = 16.dp),
                     shape = RoundedCornerShape(30.dp),
                     tonalElevation = 4.dp,
                     shadowElevation = 6.dp,
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                 ) {
-                    NavigationBar(containerColor = androidx.compose.ui.graphics.Color.Transparent, tonalElevation = 0.dp) {
-                        NavigationBarItem(selected = selectedTab == SonorieTab.Home, onClick = { onTabChange(SonorieTab.Home) }, icon = { Icon(Icons.Rounded.Home, null) }, label = { Text("Início") })
-                        NavigationBarItem(selected = selectedTab == SonorieTab.Library, onClick = { onTabChange(SonorieTab.Library) }, icon = { Icon(Icons.Rounded.MusicNote, null) }, label = { Text("Biblioteca") })
-                        NavigationBarItem(selected = selectedTab == SonorieTab.Player, onClick = { onTabChange(SonorieTab.Player) }, icon = { Icon(Icons.Rounded.PlayCircle, null) }, label = { Text("Player") })
-                        NavigationBarItem(selected = selectedTab == SonorieTab.Settings, onClick = { onTabChange(SonorieTab.Settings) }, icon = { Icon(Icons.Rounded.Settings, null) }, label = { Text("Ajustes") })
+                    NavigationBar(
+                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Home,
+                            onClick = { onTabChange(SonorieTab.Home) },
+                            icon = { Icon(Icons.Rounded.Home, null) },
+                            label = { Text("Início") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Library,
+                            onClick = { onTabChange(SonorieTab.Library) },
+                            icon = { Icon(Icons.Rounded.MusicNote, null) },
+                            label = { Text("Biblioteca") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Player,
+                            onClick = { onTabChange(SonorieTab.Player) },
+                            icon = { Icon(Icons.Rounded.PlayCircle, null) },
+                            label = { Text("Player") }
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == SonorieTab.Settings,
+                            onClick = { onTabChange(SonorieTab.Settings) },
+                            icon = { Icon(Icons.Rounded.Settings, null) },
+                            label = { Text("Ajustes") }
+                        )
                     }
                 }
             }
@@ -1352,25 +1382,41 @@ fun SonorieBottomDock(
 
 
 
+
+
 @Composable
-fun BottomDockHandle(bottomDockVisible: Boolean, onBottomDockVisibleChange: (Boolean) -> Unit) {
+fun BottomDockHandle(
+    bottomDockVisible: Boolean,
+    onBottomDockVisibleChange: (Boolean) -> Unit
+) {
     Box(
-        modifier = Modifier.fillMaxWidth().height(18.dp).pointerInput(bottomDockVisible) {
-            var totalDrag = 0f
-            detectVerticalDragGestures(
-                onDragStart = { totalDrag = 0f },
-                onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                onDragEnd = {
-                    if (totalDrag > 24f) onBottomDockVisibleChange(false)
-                    if (totalDrag < -24f) onBottomDockVisibleChange(true)
-                }
-            )
-        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .pointerInput(bottomDockVisible) {
+                var totalDrag = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                    onDragEnd = {
+                        if (totalDrag > 24f) onBottomDockVisibleChange(false)
+                        if (totalDrag < -24f) onBottomDockVisibleChange(true)
+                    }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
-        Box(Modifier.width(44.dp).height(5.dp).clip(RoundedCornerShape(50.dp)).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)))
+        Box(
+            Modifier
+                .width(44.dp)
+                .height(5.dp)
+                .clip(RoundedCornerShape(50.dp))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f))
+        )
     }
 }
+
+
 
 
 
@@ -1384,26 +1430,57 @@ fun MiniPlayer(
     onOpenPlayer: () -> Unit
 ) {
     if (currentSong == null) return
+
     val shape = RoundedCornerShape(28.dp)
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).clip(shape).clickable(onClick = onOpenPlayer),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(shape)
+            .clickable(onClick = onOpenPlayer),
         shape = shape,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 7.dp, pressedElevation = 12.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 7.dp,
+            pressedElevation = 12.dp
+        ),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(Icons.Rounded.MusicNote, null)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(currentSong.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(currentSong.artist, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    currentSong.title,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    currentSong.artist,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            IconButton(onClick = onPrevious) { Icon(Icons.Rounded.SkipPrevious, "Anterior") }
-            IconButton(onClick = onPlayPause) { Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null) }
-            IconButton(onClick = onNext) { Icon(Icons.Rounded.SkipNext, "Próxima") }
+            IconButton(onClick = onPrevious) {
+                Icon(Icons.Rounded.SkipPrevious, "Anterior")
+            }
+            IconButton(onClick = onPlayPause) {
+                Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null)
+            }
+            IconButton(onClick = onNext) {
+                Icon(Icons.Rounded.SkipNext, "Próxima")
+            }
         }
     }
 }
+
+
 
 
 

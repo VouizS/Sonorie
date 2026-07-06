@@ -96,6 +96,9 @@ private const val SONORIE_FAVORITES_KEY = "favorite_song_ids"
 private const val SONORIE_SHUFFLE_KEY = "shuffle_enabled"
 private const val SONORIE_REPEAT_KEY = "repeat_mode"
 private const val SONORIE_THEME_KEY = "theme_preference"
+private const val SONORIE_TASTE_READY_KEY = "taste_ready"
+private const val SONORIE_FAVORITE_ARTISTS_KEY = "favorite_artist_names"
+private const val SONORIE_FAVORITE_GENRES_KEY = "favorite_genre_names"
 
 @Immutable
 data class Song(
@@ -388,6 +391,30 @@ fun sendPlaybackAction(context: Context, action: String, song: Song? = null) {
     }
 }
 
+fun loadTasteReady(context: Context): Boolean {
+    return context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).getBoolean(SONORIE_TASTE_READY_KEY, false)
+}
+
+fun saveTasteReady(context: Context, ready: Boolean) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putBoolean(SONORIE_TASTE_READY_KEY, ready).apply()
+}
+
+fun loadFavoriteArtists(context: Context): Set<String> {
+    return context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).getStringSet(SONORIE_FAVORITE_ARTISTS_KEY, emptySet())?.toSet() ?: emptySet()
+}
+
+fun saveFavoriteArtists(context: Context, artists: Set<String>) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putStringSet(SONORIE_FAVORITE_ARTISTS_KEY, artists.toSet()).apply()
+}
+
+fun loadFavoriteGenres(context: Context): Set<String> {
+    return context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).getStringSet(SONORIE_FAVORITE_GENRES_KEY, emptySet())?.toSet() ?: emptySet()
+}
+
+fun saveFavoriteGenres(context: Context, genres: Set<String>) {
+    context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putStringSet(SONORIE_FAVORITE_GENRES_KEY, genres.toSet()).apply()
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -441,17 +468,15 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
     val songs = remember { mutableStateListOf<Song>() }
     var selectedTab by remember { mutableStateOf(SonorieTab.Home) }
     var bottomDockVisible by rememberSaveable { mutableStateOf(true) }
- var bottomHandleVisible by rememberSaveable { mutableStateOf(false) }
-
- LaunchedEffect(bottomHandleVisible) {
-  if (bottomHandleVisible) {
+ LaunchedEffect(bottomDockVisible) {
+  if (bottomDockVisible) {
    delay(6000)
-   bottomHandleVisible = false
+   bottomDockVisible = false
   }
  }
 
  LaunchedEffect(bottomDockVisible) {
-  bottomHandleVisible = true
+  bottomDockVisible = true
  }
     var permissionGranted by remember { mutableStateOf(hasAudioPermission(context)) }
     var notificationGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
@@ -459,10 +484,29 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
     var shuffleEnabled by remember { mutableStateOf(loadShuffleEnabled(context)) }
     var repeatMode by remember { mutableStateOf(loadRepeatMode(context)) }
 
+ var tasteReady by remember { mutableStateOf(loadTasteReady(context)) }
+ var favoriteArtists by remember { mutableStateOf(loadFavoriteArtists(context)) }
+ var favoriteGenres by remember { mutableStateOf(loadFavoriteGenres(context)) }
+
     val currentSong = SonoriePlaybackState.currentSong
     val isPlaying = SonoriePlaybackState.isPlaying
     val playbackEventVersion = SonoriePlaybackState.eventVersion
     var progressMs by remember { mutableLongStateOf(SonoriePlaybackState.positionMs) }
+
+ fun toggleFavoriteArtist(artist: String) {
+  favoriteArtists = if (artist in favoriteArtists) favoriteArtists - artist else favoriteArtists + artist
+ }
+
+ fun toggleFavoriteGenre(genre: String) {
+  favoriteGenres = if (genre in favoriteGenres) favoriteGenres - genre else favoriteGenres + genre
+ }
+
+ fun finishTasteSetup() {
+  saveFavoriteArtists(context, favoriteArtists)
+  saveFavoriteGenres(context, favoriteGenres)
+  saveTasteReady(context, true)
+  tasteReady = true
+ }
 
     fun askNotification(launcher: () -> Unit) {
         if (!notificationGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) launcher()
@@ -581,7 +625,23 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
         }
     }
 
-    Scaffold(
+    if (!tasteReady) {
+  TasteOnboardingScreen(
+   selectedArtists = favoriteArtists,
+   selectedGenres = favoriteGenres,
+   onToggleArtist = { toggleFavoriteArtist(it) },
+   onToggleGenre = { toggleFavoriteGenre(it) },
+   onFinish = { finishTasteSetup() },
+   onSkip = {
+    favoriteArtists = emptySet()
+    favoriteGenres = emptySet()
+    finishTasteSetup()
+   }
+  )
+  return
+ }
+
+ Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -615,6 +675,7 @@ fun SonorieApp(themePreference: ThemePreference, onThemePreferenceChange: (Theme
             when (selectedTab) {
                 SonorieTab.Home -> HomeScreen(
                     songs, permissionGranted, currentSong,
+ favoriteArtists, favoriteGenres,
                     onRequestPermission = { audioPermissionLauncher.launch(requiredAudioPermission()) },
                     onOpenLibrary = { selectedTab = SonorieTab.Library },
                     onOpenPlayer = { selectedTab = SonorieTab.Player }
@@ -658,20 +719,50 @@ fun HomeScreen(
     songs: List<Song>,
     permissionGranted: Boolean,
     currentSong: Song?,
+    favoriteArtists: Set<String>,
+    favoriteGenres: Set<String>,
     onRequestPermission: () -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
     val homeListState = rememberLazyListState()
- LazyColumn(Modifier.fillMaxSize(), state = homeListState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    val recommendedSongs = remember(songs, favoriteArtists) {
+        val matched = if (favoriteArtists.isEmpty()) emptyList() else songs.filter { song ->
+            favoriteArtists.any { artist ->
+                song.artist.contains(artist, ignoreCase = true) ||
+                    song.title.contains(artist, ignoreCase = true) ||
+                    song.album.contains(artist, ignoreCase = true)
+            }
+        }
+        if (matched.isNotEmpty()) matched.take(6) else songs.take(6)
+    }
+    val primaryArtist = favoriteArtists.firstOrNull() ?: "seu gosto"
+    val tasteSummary = when {
+        favoriteArtists.isNotEmpty() && favoriteGenres.isNotEmpty() -> favoriteArtists.take(3).joinToString(", ") + " • " + favoriteGenres.take(2).joinToString(", ")
+        favoriteArtists.isNotEmpty() -> favoriteArtists.take(4).joinToString(", ")
+        favoriteGenres.isNotEmpty() -> favoriteGenres.take(4).joinToString(", ")
+        else -> "Toque em Biblioteca para começar"
+    }
+
+    LazyColumn(Modifier.fillMaxSize(), state = homeListState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { HeroCard(permissionGranted, songs.size, onRequestPermission, onOpenLibrary) }
+
+        item {
+            ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Favorite, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Seu gosto musical", fontWeight = FontWeight.Bold)
+                    }
+                    Text(tasteSummary, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.78f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+
         if (currentSong != null) {
             item {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenPlayer),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-                ) {
+                ElevatedCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenPlayer), shape = RoundedCornerShape(28.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                     Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Rounded.MusicNote, null)
                         Spacer(Modifier.width(12.dp))
@@ -683,23 +774,39 @@ fun HomeScreen(
                 }
             }
         }
-        item { SectionTitle("Resumo local") }
+
+        item { SectionTitle("Para você") }
+
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatCard(Modifier.weight(1f), "Músicas", songs.size.toString())
-                StatCard(Modifier.weight(1f), "Modo", "Offline")
+            OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Descobertas para $primaryArtist", fontWeight = FontWeight.Bold)
+                    }
+                    Text("O Sonorie organiza recomendações usando seus artistas, gêneros e músicas locais.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (favoriteGenres.isNotEmpty()) {
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            favoriteGenres.take(8).forEach { genre ->
+                                AssistChip(onClick = {}, label = { Text(genre) }, leadingIcon = { Icon(Icons.Rounded.MusicNote, null) })
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        items(recommendedSongs.take(4), key = { it.id }, contentType = { "recommendedSong" }) { SongCompactItem(it) }
+
+        item { SectionTitle("Resumo local") }
+        item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { StatCard(Modifier.weight(1f), "Músicas", songs.size.toString()); StatCard(Modifier.weight(1f), "Modo", "Offline") } }
         item { SectionTitle("Cápsulas") }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Cápsulas musicais offline", fontWeight = FontWeight.Bold)
-                    }
-                    Text("Em breve: treino, estudo, viagem, madrugada e favoritas organizadas por momento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.MusicNote, null, tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(10.dp)); Text("Cápsulas musicais inteligentes", fontWeight = FontWeight.Bold) }
+                    Text(if (favoriteArtists.isNotEmpty()) "Base inicial criada com ${favoriteArtists.take(3).joinToString(", ")}. Próximas versões vão separar por momentos, energia e artistas parecidos." else "Em breve: treino, estudo, viagem, madrugada e favoritas organizadas por momento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -707,6 +814,8 @@ fun HomeScreen(
         items(songs.take(5), key = { it.id }, contentType = { "homePreviewSong" }) { SongCompactItem(it) }
     }
 }
+
+
 
 @Composable
 fun HeroCard(permissionGranted: Boolean, songsCount: Int, onRequestPermission: () -> Unit, onOpenLibrary: () -> Unit) {
@@ -1203,17 +1312,10 @@ fun SonorieBottomDock(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = bottomPadding),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = bottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            AnimatedVisibility(visible = bottomHandleVisible, enter = fadeIn(), exit = fadeOut()) {
-             BottomDockHandle(
-            }
-                bottomDockVisible = bottomDockVisible,
-                onBottomDockVisibleChange = onBottomDockVisibleChange
-            )
+            BottomDockHandle(bottomDockVisible = bottomDockVisible, onBottomDockVisibleChange = onBottomDockVisibleChange)
 
             MiniPlayer(
                 currentSong = currentSong,
@@ -1224,44 +1326,23 @@ fun SonorieBottomDock(
                 onOpenPlayer = onOpenPlayer
             )
 
-            AnimatedVisibility(visible = bottomDockVisible) {
+            AnimatedVisibility(
+                visible = bottomDockVisible,
+                enter = fadeIn(animationSpec = tween(durationMillis = 160)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 140))
+            ) {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 0.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 4.dp, end = 16.dp),
                     shape = RoundedCornerShape(30.dp),
                     tonalElevation = 4.dp,
                     shadowElevation = 6.dp,
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
                 ) {
-                    NavigationBar(
-                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                        tonalElevation = 0.dp
-                    ) {
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Home,
-                            onClick = { onTabChange(SonorieTab.Home) },
-                            icon = { Icon(Icons.Rounded.Home, null) },
-                            label = { Text("Início") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Library,
-                            onClick = { onTabChange(SonorieTab.Library) },
-                            icon = { Icon(Icons.Rounded.MusicNote, null) },
-                            label = { Text("Biblioteca") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Player,
-                            onClick = { onTabChange(SonorieTab.Player) },
-                            icon = { Icon(Icons.Rounded.PlayCircle, null) },
-                            label = { Text("Player") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Settings,
-                            onClick = { onTabChange(SonorieTab.Settings) },
-                            icon = { Icon(Icons.Rounded.Settings, null) },
-                            label = { Text("Ajustes") }
-                        )
+                    NavigationBar(containerColor = androidx.compose.ui.graphics.Color.Transparent, tonalElevation = 0.dp) {
+                        NavigationBarItem(selected = selectedTab == SonorieTab.Home, onClick = { onTabChange(SonorieTab.Home) }, icon = { Icon(Icons.Rounded.Home, null) }, label = { Text("Início") })
+                        NavigationBarItem(selected = selectedTab == SonorieTab.Library, onClick = { onTabChange(SonorieTab.Library) }, icon = { Icon(Icons.Rounded.MusicNote, null) }, label = { Text("Biblioteca") })
+                        NavigationBarItem(selected = selectedTab == SonorieTab.Player, onClick = { onTabChange(SonorieTab.Player) }, icon = { Icon(Icons.Rounded.PlayCircle, null) }, label = { Text("Player") })
+                        NavigationBarItem(selected = selectedTab == SonorieTab.Settings, onClick = { onTabChange(SonorieTab.Settings) }, icon = { Icon(Icons.Rounded.Settings, null) }, label = { Text("Ajustes") })
                     }
                 }
             }
@@ -1269,34 +1350,29 @@ fun SonorieBottomDock(
     }
 }
 
+
+
 @Composable
 fun BottomDockHandle(bottomDockVisible: Boolean, onBottomDockVisibleChange: (Boolean) -> Unit) {
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(18.dp)
-            .pointerInput(bottomDockVisible) {
-                var totalDrag = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                    onDragEnd = {
-                        if (totalDrag > 24f) onBottomDockVisibleChange(false)
-                        if (totalDrag < -24f) onBottomDockVisibleChange(true)
-                    }
-                )
-            },
+        modifier = Modifier.fillMaxWidth().height(18.dp).pointerInput(bottomDockVisible) {
+            var totalDrag = 0f
+            detectVerticalDragGestures(
+                onDragStart = { totalDrag = 0f },
+                onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                onDragEnd = {
+                    if (totalDrag > 24f) onBottomDockVisibleChange(false)
+                    if (totalDrag < -24f) onBottomDockVisibleChange(true)
+                }
+            )
+        },
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            Modifier
-                .width(44.dp)
-                .height(5.dp)
-                .clip(RoundedCornerShape(50.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f))
-        )
+        Box(Modifier.width(44.dp).height(5.dp).clip(RoundedCornerShape(50.dp)).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)))
     }
 }
+
+
 
 @Composable
 fun MiniPlayer(
@@ -1308,22 +1384,14 @@ fun MiniPlayer(
     onOpenPlayer: () -> Unit
 ) {
     if (currentSong == null) return
-
     val shape = RoundedCornerShape(28.dp)
     ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-            .clip(shape)
-            .clickable(onClick = onOpenPlayer),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp).clip(shape).clickable(onClick = onOpenPlayer),
         shape = shape,
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 7.dp, pressedElevation = 12.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
     ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Rounded.MusicNote, null)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -1336,6 +1404,8 @@ fun MiniPlayer(
         }
     }
 }
+
+
 
 @Composable
 fun SettingsScreen(
@@ -1362,7 +1432,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.3-r2", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.4", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
@@ -1583,4 +1653,68 @@ fun loadRepeatMode(context: Context): RepeatMode {
 
 fun saveRepeatMode(context: Context, mode: RepeatMode) {
     context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putString(SONORIE_REPEAT_KEY, mode.name).apply()
+}
+
+
+@Composable
+fun TasteOnboardingScreen(
+    selectedArtists: Set<String>,
+    selectedGenres: Set<String>,
+    onToggleArtist: (String) -> Unit,
+    onToggleGenre: (String) -> Unit,
+    onFinish: () -> Unit,
+    onSkip: () -> Unit
+) {
+    val featuredArtists = remember { listOf("Yeat", "Ken Carson", "Playboi Carti", "Nine Vicious", "Destroy Lonely", "Homixide Gang", "Travis Scott", "Future", "Lil Uzi Vert", "21 Savage", "Drake", "The Weeknd", "Kendrick Lamar", "Tyler, The Creator", "A$AP Rocky", "Metro Boomin", "SZA", "Doja Cat", "Billie Eilish", "Ariana Grande", "Dua Lipa", "Bruno Mars", "Post Malone", "Bad Bunny", "Anitta", "Matuê", "Teto", "Wiu", "Veigh", "MC Cabelinho", "Luan Santana", "Gusttavo Lima") }
+    val genres = remember { listOf("Rage", "Trap", "Hip-hop", "Pluggnb", "Rap", "R&B", "Pop", "Funk", "Phonk", "Eletrônica", "Lo-fi", "Rock", "Indie", "Metal", "Sertanejo", "Gospel", "Jazz", "MPB", "Reggaeton", "Afrobeat", "K-pop", "Hyperpop", "Drill", "House") }
+
+    Surface(Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Sonorie", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+                    Text("Monte seu gosto musical", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Escolha artistas e gêneros para o Sonorie organizar cápsulas, recomendações locais e a home do seu jeito.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(32.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+                    Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.AutoAwesome, null); Spacer(Modifier.width(10.dp)); Text("Descoberta personalizada", fontWeight = FontWeight.Bold) }
+                        Text("Essa é a base local. Depois podemos conectar descoberta online com segurança e APIs oficiais.", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
+                    }
+                }
+            }
+            item { Text("Artistas favoritos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            item { TasteChoiceGrid(featuredArtists, selectedArtists, onToggleArtist) }
+            item { Text("Gêneros musicais", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            item { TasteChoiceGrid(genres, selectedGenres, onToggleGenre) }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = onFinish, enabled = selectedArtists.isNotEmpty() || selectedGenres.isNotEmpty(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Icon(Icons.Rounded.Check, null); Spacer(Modifier.width(8.dp)); Text("Entrar no Sonorie") }
+                    TextButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) { Text("Pular por enquanto") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TasteChoiceGrid(items: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        items.chunked(2).forEach { rowItems ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                rowItems.forEach { item ->
+                    FilterChip(
+                        selected = item in selected,
+                        onClick = { onToggle(item) },
+                        label = { Text(item, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        leadingIcon = { Icon(if (item in selected) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
 }

@@ -1299,17 +1299,17 @@ fun SonorieBottomDock(
     onPrevious: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
-    val dockBottomPadding by animateDpAsState(
-        targetValue = if (bottomDockVisible) 10.dp else 6.dp,
-        animationSpec = tween(durationMillis = 220),
-        label = "sonorieDockBottomPadding"
+    val bottomPadding by animateDpAsState(
+        targetValue = if (bottomDockVisible) 10.dp else 8.dp,
+        animationSpec = tween(durationMillis = 180),
+        label = "sonorieDockPadding"
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .wrapContentHeight()
-            .padding(bottom = dockBottomPadding),
+            .padding(bottom = bottomPadding),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         BottomDockHandle(
@@ -1331,48 +1331,25 @@ fun SonorieBottomDock(
             enter = fadeIn(animationSpec = tween(durationMillis = 160)),
             exit = fadeOut(animationSpec = tween(durationMillis = 140))
         ) {
-            Surface(
+            NavigationBar(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, top = 4.dp, end = 16.dp),
-                shape = RoundedCornerShape(30.dp),
-                tonalElevation = 4.dp,
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)
+                    .padding(start = 16.dp, top = 6.dp, end = 16.dp)
+                    .clip(RoundedCornerShape(30.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
+                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                tonalElevation = 0.dp
             ) {
-                NavigationBar(
-                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                    tonalElevation = 0.dp
-                ) {
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Home,
-                        onClick = { onTabChange(SonorieTab.Home) },
-                        icon = { Icon(Icons.Rounded.Home, null) },
-                        label = { Text("Início") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Library,
-                        onClick = { onTabChange(SonorieTab.Library) },
-                        icon = { Icon(Icons.Rounded.MusicNote, null) },
-                        label = { Text("Biblioteca") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Player,
-                        onClick = { onTabChange(SonorieTab.Player) },
-                        icon = { Icon(Icons.Rounded.PlayCircle, null) },
-                        label = { Text("Player") }
-                    )
-                    NavigationBarItem(
-                        selected = selectedTab == SonorieTab.Settings,
-                        onClick = { onTabChange(SonorieTab.Settings) },
-                        icon = { Icon(Icons.Rounded.Settings, null) },
-                        label = { Text("Ajustes") }
-                    )
-                }
+                NavigationBarItem(selected = selectedTab == SonorieTab.Home, onClick = { onTabChange(SonorieTab.Home) }, icon = { Icon(Icons.Rounded.Home, null) }, label = { Text("Início") })
+                NavigationBarItem(selected = selectedTab == SonorieTab.Library, onClick = { onTabChange(SonorieTab.Library) }, icon = { Icon(Icons.Rounded.MusicNote, null) }, label = { Text("Biblioteca") })
+                NavigationBarItem(selected = selectedTab == SonorieTab.Player, onClick = { onTabChange(SonorieTab.Player) }, icon = { Icon(Icons.Rounded.PlayCircle, null) }, label = { Text("Player") })
+                NavigationBarItem(selected = selectedTab == SonorieTab.Settings, onClick = { onTabChange(SonorieTab.Settings) }, icon = { Icon(Icons.Rounded.Settings, null) }, label = { Text("Ajustes") })
             }
         }
     }
 }
+
+
 
 
 
@@ -1388,30 +1365,21 @@ fun BottomDockHandle(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(22.dp)
-            .pointerInput(bottomDockVisible) {
-                var totalDrag = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                    onDragEnd = {
-                        if (totalDrag > 18f) onBottomDockVisibleChange(false)
-                        if (totalDrag < -18f) onBottomDockVisibleChange(true)
-                    }
-                )
-            }
+            .height(24.dp)
             .clickable { onBottomDockVisibleChange(!bottomDockVisible) },
         contentAlignment = Alignment.Center
     ) {
         Box(
             Modifier
-                .width(44.dp)
+                .width(46.dp)
                 .height(5.dp)
                 .clip(RoundedCornerShape(50.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.46f))
         )
     }
 }
+
+
 
 
 
@@ -1534,7 +1502,7 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.6: cápsulas musicais reais, atalhos inteligentes e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.7: imagens reais de artistas, cápsulas avançadas e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1731,6 +1699,100 @@ fun saveRepeatMode(context: Context, mode: RepeatMode) {
     context.getSharedPreferences(SONORIE_PREFS, Context.MODE_PRIVATE).edit().putString(SONORIE_REPEAT_KEY, mode.name).apply()
 }
 
+
+@Composable
+fun FavoriteArtistHomeShelf(
+    songs: List<Song>,
+    favoriteArtists: Set<String>,
+    onArtistSelected: (String) -> Unit = {}
+) {
+    val artists = remember(songs, favoriteArtists) {
+        val fromSongs = songs
+            .map { it.artist.trim() }
+            .filter { it.isNotBlank() && it != "<unknown>" && it.lowercase() != "unknown" }
+            .distinct()
+
+        val merged = favoriteArtists.toList() + fromSongs.filter { artist ->
+            favoriteArtists.none { fav -> fav.equals(artist, ignoreCase = true) }
+        }
+        merged.take(12)
+    }
+
+    if (artists.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+        ) {
+            Text(
+                text = "Artistas que você curte",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                artists.forEach { artist ->
+                    Surface(
+                        modifier = Modifier
+                            .width(152.dp)
+                            .clickable { onArtistSelected(artist) },
+                        shape = RoundedCornerShape(28.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                        tonalElevation = 4.dp,
+                        shadowElevation = 6.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(82.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(
+                                            alpha = if (favoriteArtists.any { it.equals(artist, ignoreCase = true) }) 0.38f else 0.22f
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = artist.take(1).uppercase(),
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = artist,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = if (favoriteArtists.any { it.equals(artist, ignoreCase = true) }) "Favorito" else "Relacionado",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun TasteOnboardingScreen(

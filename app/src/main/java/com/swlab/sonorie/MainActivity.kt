@@ -1742,7 +1742,7 @@ fun TasteOnboardingScreen(
     onFinish: () -> Unit,
     onSkip: () -> Unit
 ) {
-    val featuredArtists = remember { listOf("Yeat", "Ken Carson", "Playboi Carti", "Nine Vicious", "Destroy Lonely", "Homixide Gang", "Travis Scott", "Future", "Lil Uzi Vert", "21 Savage", "Drake", "The Weeknd", "Kendrick Lamar", "Tyler, The Creator", "A$AP Rocky", "Metro Boomin", "SZA", "Doja Cat", "Billie Eilish", "Ariana Grande", "Dua Lipa", "Bruno Mars", "Post Malone", "Bad Bunny", "Anitta", "Matuê", "Teto", "Wiu", "Veigh", "MC Cabelinho", "Luan Santana", "Gusttavo Lima") }
+    val featuredArtists = remember { listOf("Yeat", "Ken Carson", "Playboi Carti", "Nine Vicious", "Destroy Lonely", "Homixide Gang", "Travis Scott", "Future", "Lil Uzi Vert", "21 Savage", "Drake", "The Weeknd", "Kendrick Lamar", "Tyler, The Creator", "A\$AP Rocky", "Metro Boomin", "SZA", "Doja Cat", "Billie Eilish", "Ariana Grande", "Dua Lipa", "Bruno Mars", "Post Malone", "Bad Bunny", "Anitta", "Matuê", "Teto", "Wiu", "Veigh", "MC Cabelinho", "Luan Santana", "Gusttavo Lima") }
     val genres = remember { listOf("Rage", "Trap", "Hip-hop", "Pluggnb", "Rap", "R&B", "Pop", "Funk", "Phonk", "Eletrônica", "Lo-fi", "Rock", "Indie", "Metal", "Sertanejo", "Gospel", "Jazz", "MPB", "Reggaeton", "Afrobeat", "K-pop", "Hyperpop", "Drill", "House") }
 
     Surface(Modifier.fillMaxSize()) {

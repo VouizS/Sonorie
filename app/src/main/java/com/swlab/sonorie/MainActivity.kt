@@ -76,6 +76,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.wrapContentHeight
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
@@ -947,7 +948,7 @@ fun LibraryScreen(
             ) {
                 LibraryModeButton(
                     selected = libraryMode == "musicas" && !favoritesOnly,
-                    text = if (libraryMode == "musicas" && !favoritesOnly) "Todas ✓" else "Todas",
+                    text = if (libraryMode == "musicas" && !favoritesOnly) "Todas" else "Todas",
                     onClick = {
                         libraryMode = "musicas"
                         favoritesOnly = false
@@ -958,7 +959,7 @@ fun LibraryScreen(
 
                 LibraryModeButton(
                     selected = libraryMode == "artistas",
-                    text = if (libraryMode == "artistas") "Artistas ✓" else "Artistas",
+                    text = if (libraryMode == "artistas") "Artistas" else "Artistas",
                     onClick = {
                         libraryMode = "artistas"
                         selectedArtist = null
@@ -968,7 +969,7 @@ fun LibraryScreen(
 
                 LibraryModeButton(
                     selected = libraryMode == "albuns",
-                    text = if (libraryMode == "albuns") "Álbuns ✓" else "Álbuns",
+                    text = if (libraryMode == "albuns") "Álbuns" else "Álbuns",
                     onClick = {
                         libraryMode = "albuns"
                         selectedArtist = null
@@ -992,7 +993,7 @@ fun LibraryScreen(
                         Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(if (favoritesOnly) "Favoritas ✓" else "Favoritas (${favoriteSongIds.size})")
+                    Text(if (favoritesOnly) "Favoritas" else "Favoritas (${favoriteSongIds.size})")
                 }
             }
         }
@@ -1253,12 +1254,12 @@ fun PlayerScreen(
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Modo de reprodução", fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        FilledTonalButton(onClick = onToggleShuffle, shape = RoundedCornerShape(20.dp)) { Text(if (shuffleEnabled) "Aleatório ✓" else "Aleatório") }
+                        FilledTonalButton(onClick = onToggleShuffle, shape = RoundedCornerShape(20.dp)) { Text(if (shuffleEnabled) "Aleatório" else "Aleatório") }
                         FilledTonalButton(onClick = onCycleRepeat, shape = RoundedCornerShape(20.dp)) {
                             Text(when (repeatMode) {
                                 RepeatMode.Off -> "Repetir"
-                                RepeatMode.All -> "Repetir tudo ✓"
-                                RepeatMode.One -> "Repetir 1 ✓"
+                                RepeatMode.All -> "Repetir tudo"
+                                RepeatMode.One -> "Repetir 1"
                             })
                         }
                     }
@@ -1298,87 +1299,82 @@ fun SonorieBottomDock(
     onPrevious: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
-    val bottomPadding by animateDpAsState(
-        targetValue = if (bottomDockVisible) 10.dp else 4.dp,
+    val dockBottomPadding by animateDpAsState(
+        targetValue = if (bottomDockVisible) 10.dp else 6.dp,
         animationSpec = tween(durationMillis = 220),
-        label = "sonorieBottomDockPadding"
+        label = "sonorieDockBottomPadding"
     )
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-        tonalElevation = 5.dp,
-        shadowElevation = 12.dp,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentHeight()
+            .padding(bottom = dockBottomPadding),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = bottomPadding),
-            horizontalAlignment = Alignment.CenterHorizontally
+        BottomDockHandle(
+            bottomDockVisible = bottomDockVisible,
+            onBottomDockVisibleChange = onBottomDockVisibleChange
+        )
+
+        MiniPlayer(
+            currentSong = currentSong,
+            isPlaying = isPlaying,
+            onPlayPause = onPlayPause,
+            onNext = onNext,
+            onPrevious = onPrevious,
+            onOpenPlayer = onOpenPlayer
+        )
+
+        AnimatedVisibility(
+            visible = bottomDockVisible,
+            enter = fadeIn(animationSpec = tween(durationMillis = 160)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 140))
         ) {
-            BottomDockHandle(
-                bottomDockVisible = bottomDockVisible,
-                onBottomDockVisibleChange = onBottomDockVisibleChange
-            )
-
-            MiniPlayer(
-                currentSong = currentSong,
-                isPlaying = isPlaying,
-                onPlayPause = onPlayPause,
-                onNext = onNext,
-                onPrevious = onPrevious,
-                onOpenPlayer = onOpenPlayer
-            )
-
-            AnimatedVisibility(
-                visible = bottomDockVisible,
-                enter = fadeIn(animationSpec = tween(durationMillis = 160)),
-                exit = fadeOut(animationSpec = tween(durationMillis = 140))
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = 4.dp, end = 16.dp),
+                shape = RoundedCornerShape(30.dp),
+                tonalElevation = 4.dp,
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.78f)
             ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, top = 4.dp, end = 16.dp),
-                    shape = RoundedCornerShape(30.dp),
-                    tonalElevation = 4.dp,
-                    shadowElevation = 6.dp,
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+                NavigationBar(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    tonalElevation = 0.dp
                 ) {
-                    NavigationBar(
-                        containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                        tonalElevation = 0.dp
-                    ) {
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Home,
-                            onClick = { onTabChange(SonorieTab.Home) },
-                            icon = { Icon(Icons.Rounded.Home, null) },
-                            label = { Text("Início") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Library,
-                            onClick = { onTabChange(SonorieTab.Library) },
-                            icon = { Icon(Icons.Rounded.MusicNote, null) },
-                            label = { Text("Biblioteca") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Player,
-                            onClick = { onTabChange(SonorieTab.Player) },
-                            icon = { Icon(Icons.Rounded.PlayCircle, null) },
-                            label = { Text("Player") }
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == SonorieTab.Settings,
-                            onClick = { onTabChange(SonorieTab.Settings) },
-                            icon = { Icon(Icons.Rounded.Settings, null) },
-                            label = { Text("Ajustes") }
-                        )
-                    }
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Home,
+                        onClick = { onTabChange(SonorieTab.Home) },
+                        icon = { Icon(Icons.Rounded.Home, null) },
+                        label = { Text("Início") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Library,
+                        onClick = { onTabChange(SonorieTab.Library) },
+                        icon = { Icon(Icons.Rounded.MusicNote, null) },
+                        label = { Text("Biblioteca") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Player,
+                        onClick = { onTabChange(SonorieTab.Player) },
+                        icon = { Icon(Icons.Rounded.PlayCircle, null) },
+                        label = { Text("Player") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Settings,
+                        onClick = { onTabChange(SonorieTab.Settings) },
+                        icon = { Icon(Icons.Rounded.Settings, null) },
+                        label = { Text("Ajustes") }
+                    )
                 }
             }
         }
     }
 }
+
+
 
 
 
@@ -1392,18 +1388,19 @@ fun BottomDockHandle(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(18.dp)
+            .height(22.dp)
             .pointerInput(bottomDockVisible) {
                 var totalDrag = 0f
                 detectVerticalDragGestures(
                     onDragStart = { totalDrag = 0f },
                     onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
                     onDragEnd = {
-                        if (totalDrag > 24f) onBottomDockVisibleChange(false)
-                        if (totalDrag < -24f) onBottomDockVisibleChange(true)
+                        if (totalDrag > 18f) onBottomDockVisibleChange(false)
+                        if (totalDrag < -18f) onBottomDockVisibleChange(true)
                     }
                 )
-            },
+            }
+            .clickable { onBottomDockVisibleChange(!bottomDockVisible) },
         contentAlignment = Alignment.Center
     ) {
         Box(
@@ -1411,10 +1408,12 @@ fun BottomDockHandle(
                 .width(44.dp)
                 .height(5.dp)
                 .clip(RoundedCornerShape(50.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f))
         )
     }
 }
+
+
 
 
 
@@ -1535,7 +1534,7 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.4: cápsulas musicais reais, atalhos inteligentes e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.6: cápsulas musicais reais, atalhos inteligentes e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1582,7 +1581,7 @@ fun ThemeOptionButton(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp)
     ) {
-        Text(if (selected) "$label ✓" else label)
+        Text(if (selected) "$label" else label)
     }
 }
 

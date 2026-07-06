@@ -12,8 +12,8 @@ android {
         applicationId = "com.swlab.sonorie"
         minSdk = 23
         targetSdk = 35
-        versionCode = 22
-        versionName = "0.3.4-r2"
+        versionCode = 23
+        versionName = "0.3.5"
     }
 
     buildFeatures {

@@ -26,10 +26,19 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,13 +54,19 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -1299,75 +1314,85 @@ fun SonorieBottomDock(
     onPrevious: () -> Unit,
     onOpenPlayer: () -> Unit
 ) {
-    val bottomPadding by animateDpAsState(
-        targetValue = if (bottomDockVisible) 10.dp else 8.dp,
-        animationSpec = tween(durationMillis = 160),
-        label = "sonorieBottomDockPadding"
-    )
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.Transparent)
-            .padding(bottom = bottomPadding),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(start = 0.dp, top = 0.dp, end = 0.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Bottom
     ) {
         BottomDockHandle(
             bottomDockVisible = bottomDockVisible,
             onBottomDockVisibleChange = onBottomDockVisibleChange
         )
 
-        MiniPlayer(
-            currentSong = currentSong,
-            isPlaying = isPlaying,
-            onPlayPause = onPlayPause,
-            onNext = onNext,
-            onPrevious = onPrevious,
-            onOpenPlayer = onOpenPlayer
-        )
-
         AnimatedVisibility(
             visible = bottomDockVisible,
-            enter = fadeIn(animationSpec = tween(durationMillis = 130)),
-            exit = fadeOut(animationSpec = tween(durationMillis = 120))
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 170),
+                initialOffsetY = { fullHeight -> fullHeight }
+            ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 150),
+                targetOffsetY = { fullHeight -> fullHeight + 80 }
+            ) + fadeOut(animationSpec = tween(durationMillis = 100))
         ) {
-            NavigationBar(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, top = 6.dp, end = 16.dp)
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
-                containerColor = Color.Transparent,
-                tonalElevation = 0.dp
+                    .background(Color.Transparent),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                NavigationBarItem(
-                    selected = selectedTab == SonorieTab.Home,
-                    onClick = { onTabChange(SonorieTab.Home) },
-                    icon = { Icon(Icons.Rounded.Home, null) },
-                    label = { Text("Início") }
+                MiniPlayer(
+                    currentSong = currentSong,
+                    isPlaying = isPlaying,
+                    onPlayPause = onPlayPause,
+                    onNext = onNext,
+                    onPrevious = onPrevious,
+                    onOpenPlayer = onOpenPlayer
                 )
-                NavigationBarItem(
-                    selected = selectedTab == SonorieTab.Library,
-                    onClick = { onTabChange(SonorieTab.Library) },
-                    icon = { Icon(Icons.Rounded.MusicNote, null) },
-                    label = { Text("Biblioteca") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == SonorieTab.Player,
-                    onClick = { onTabChange(SonorieTab.Player) },
-                    icon = { Icon(Icons.Rounded.PlayCircle, null) },
-                    label = { Text("Player") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == SonorieTab.Settings,
-                    onClick = { onTabChange(SonorieTab.Settings) },
-                    icon = { Icon(Icons.Rounded.Settings, null) },
-                    label = { Text("Ajustes") }
-                )
+
+                NavigationBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 6.dp, end = 16.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
+                    containerColor = Color.Transparent,
+                    tonalElevation = 0.dp
+                ) {
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Home,
+                        onClick = { onTabChange(SonorieTab.Home) },
+                        icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
+                        label = { Text("Início") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Library,
+                        onClick = { onTabChange(SonorieTab.Library) },
+                        icon = { Icon(Icons.Rounded.MusicNote, contentDescription = null) },
+                        label = { Text("Biblioteca") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Player,
+                        onClick = { onTabChange(SonorieTab.Player) },
+                        icon = { Icon(Icons.Rounded.PlayCircle, contentDescription = null) },
+                        label = { Text("Player") }
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == SonorieTab.Settings,
+                        onClick = { onTabChange(SonorieTab.Settings) },
+                        icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
+                        label = { Text("Ajustes") }
+                    )
+                }
             }
         }
     }
 }
+
+
 
 
 
@@ -1391,7 +1416,7 @@ fun BottomDockHandle(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(24.dp)
+            .height(26.dp)
             .background(Color.Transparent)
             .clickable { onBottomDockVisibleChange(!bottomDockVisible) },
         contentAlignment = Alignment.Center
@@ -1401,10 +1426,12 @@ fun BottomDockHandle(
                 .width(46.dp)
                 .height(5.dp)
                 .clip(RoundedCornerShape(50.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.44f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f))
         )
     }
 }
+
+
 
 
 
@@ -1509,7 +1536,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.6-r2c", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.6-r3", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {

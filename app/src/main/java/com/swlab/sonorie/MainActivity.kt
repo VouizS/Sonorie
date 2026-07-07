@@ -64,7 +64,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures./* detectVerticalDragGestures removed */
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -77,6 +77,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.ui.graphics.Color
 
 const val SONORIE_ACTION_PLAY = "com.swlab.sonorie.action.PLAY"
 const val SONORIE_ACTION_TOGGLE = "com.swlab.sonorie.action.TOGGLE"
@@ -1301,14 +1302,14 @@ fun SonorieBottomDock(
 ) {
     val bottomPadding by animateDpAsState(
         targetValue = if (bottomDockVisible) 10.dp else 8.dp,
-        animationSpec = tween(durationMillis = 180),
-        label = "sonorieDockPadding"
+        animationSpec = tween(durationMillis = 160),
+        label = "sonorieBottomDockPadding"
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .wrapContentHeight()
+            .background(Color.Transparent)
             .padding(bottom = bottomPadding),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -1328,8 +1329,8 @@ fun SonorieBottomDock(
 
         AnimatedVisibility(
             visible = bottomDockVisible,
-            enter = fadeIn(animationSpec = tween(durationMillis = 160)),
-            exit = fadeOut(animationSpec = tween(durationMillis = 140))
+            enter = fadeIn(animationSpec = tween(durationMillis = 130)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 120))
         ) {
             NavigationBar(
                 modifier = Modifier
@@ -1337,17 +1338,39 @@ fun SonorieBottomDock(
                     .padding(start = 16.dp, top = 6.dp, end = 16.dp)
                     .clip(RoundedCornerShape(30.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)),
-                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                containerColor = Color.Transparent,
                 tonalElevation = 0.dp
             ) {
-                NavigationBarItem(selected = selectedTab == SonorieTab.Home, onClick = { onTabChange(SonorieTab.Home) }, icon = { Icon(Icons.Rounded.Home, null) }, label = { Text("Início") })
-                NavigationBarItem(selected = selectedTab == SonorieTab.Library, onClick = { onTabChange(SonorieTab.Library) }, icon = { Icon(Icons.Rounded.MusicNote, null) }, label = { Text("Biblioteca") })
-                NavigationBarItem(selected = selectedTab == SonorieTab.Player, onClick = { onTabChange(SonorieTab.Player) }, icon = { Icon(Icons.Rounded.PlayCircle, null) }, label = { Text("Player") })
-                NavigationBarItem(selected = selectedTab == SonorieTab.Settings, onClick = { onTabChange(SonorieTab.Settings) }, icon = { Icon(Icons.Rounded.Settings, null) }, label = { Text("Ajustes") })
+                NavigationBarItem(
+                    selected = selectedTab == SonorieTab.Home,
+                    onClick = { onTabChange(SonorieTab.Home) },
+                    icon = { Icon(Icons.Rounded.Home, null) },
+                    label = { Text("Início") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == SonorieTab.Library,
+                    onClick = { onTabChange(SonorieTab.Library) },
+                    icon = { Icon(Icons.Rounded.MusicNote, null) },
+                    label = { Text("Biblioteca") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == SonorieTab.Player,
+                    onClick = { onTabChange(SonorieTab.Player) },
+                    icon = { Icon(Icons.Rounded.PlayCircle, null) },
+                    label = { Text("Player") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == SonorieTab.Settings,
+                    onClick = { onTabChange(SonorieTab.Settings) },
+                    icon = { Icon(Icons.Rounded.Settings, null) },
+                    label = { Text("Ajustes") }
+                )
             }
         }
     }
 }
+
+
 
 
 
@@ -1366,18 +1389,21 @@ fun BottomDockHandle(
         modifier = Modifier
             .fillMaxWidth()
             .height(24.dp)
+            .background(Color.Transparent)
             .clickable { onBottomDockVisibleChange(!bottomDockVisible) },
         contentAlignment = Alignment.Center
     ) {
         Box(
-            Modifier
+            modifier = Modifier
                 .width(46.dp)
                 .height(5.dp)
                 .clip(RoundedCornerShape(50.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.46f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.44f))
         )
     }
 }
+
+
 
 
 
@@ -1476,7 +1502,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.6-r1", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.6-r2b", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {

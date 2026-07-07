@@ -64,7 +64,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures./* detectVerticalDragGestures removed */
+import androidx.compose.foundation.gestures./* /* detectVerticalDragGestures removed */ removed */
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -1380,6 +1380,8 @@ fun SonorieBottomDock(
 
 
 
+
+
 @Composable
 fun BottomDockHandle(
     bottomDockVisible: Boolean,
@@ -1402,6 +1404,8 @@ fun BottomDockHandle(
         )
     }
 }
+
+
 
 
 

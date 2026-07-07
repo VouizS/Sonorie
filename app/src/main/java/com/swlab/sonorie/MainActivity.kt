@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -740,7 +742,8 @@ fun HomeScreen(
     onRequestPermission: () -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenPlayer: () -> Unit
-) {
+,
+    onEditTaste: () -> Unit = {}) {
     val homeListState = rememberLazyListState()
     val recommendedSongs = remember(songs, favoriteArtists) {
         val matched = if (favoriteArtists.isEmpty()) emptyList() else songs.filter { song ->
@@ -791,7 +794,16 @@ fun HomeScreen(
             }
         }
 
-        item { SectionTitle("Para você") }
+        item { 
+        FavoriteArtistHomeShelf(
+            favoriteArtists = favoriteArtists,
+            favoriteGenres = favoriteGenres,
+            onEditTaste = onEditTaste
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+SectionTitle("Para você") }
 
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
@@ -1536,7 +1548,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.6-r3", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.7", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
@@ -1562,7 +1574,7 @@ fun SettingsScreen(
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
                 Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Próxima evolução", fontWeight = FontWeight.Bold)
-                    Text("v0.3.7: imagens reais de artistas, cápsulas avançadas e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("v0.3.8: imagens reais de artistas somente com fonte segura, cápsulas por momento e sincronização fina da notificação.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1762,9 +1774,111 @@ fun saveRepeatMode(context: Context, mode: RepeatMode) {
 
 @Composable
 fun FavoriteArtistHomeShelf(
-    songs: List<Song>,
     favoriteArtists: Set<String>,
-    onArtistSelected: (String) -> Unit = {}
+    favoriteGenres: Set<String>,
+    onEditTaste: () -> Unit = {}
+) {
+    val cleanArtists = favoriteArtists
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(5)
+
+    val cleanGenres = favoriteGenres
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(3)
+
+    val primaryArtist = cleanArtists.firstOrNull()
+    val artistLine = if (cleanArtists.isEmpty()) {
+        "Escolha artistas para personalizar sua Home."
+    } else {
+        cleanArtists.joinToString(", ")
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(30.dp))
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.30f),
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.86f)
+                    )
+                )
+            )
+            .clickable { onEditTaste() }
+            .padding(22.dp)
+    ) {
+        Text(
+            text = "Artistas favoritos",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = primaryArtist ?: "Monte seu gosto musical",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = artistLine,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        if (cleanGenres.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                cleanGenres.forEach { genre ->
+                    ArtistTasteChip(label = genre)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Text(
+            text = "Editar gosto musical",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+fun ArtistTasteChip(label: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+
 ) {
     val artists = remember(songs, favoriteArtists) {
         val fromSongs = songs

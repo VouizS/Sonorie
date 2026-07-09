@@ -39,7 +39,16 @@ jobs:
           from pathlib import Path
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           s = manifest.read_text()
+          permissions = """
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+          """
+          if "android.permission.READ_MEDIA_AUDIO" not in s:
+              s = s.replace("<application", permissions + "\n    <application", 1)
           s = s.replace('android:label="sonorie"', 'android:label="Sonorie"')
+          if "android:requestLegacyExternalStorage" not in s:
+              s = s.replace("<application", '<application android:requestLegacyExternalStorage="true"', 1)
           manifest.write_text(s)
           PY2
 
@@ -52,14 +61,13 @@ jobs:
         run: |
           set +e
           flutter analyze
-          ANALYZE_EXIT=$?
-          echo "flutter analyze exit=$ANALYZE_EXIT"
-          echo "Analyze is diagnostic-only in v0.4.0-r3. Real gate is flutter build apk."
+          echo "flutter analyze exit=$?"
+          echo "Analyze is diagnostic-only. Real gate is flutter build apk."
           exit 0
 
       - name: Build debug APK
         working-directory: sonorie_flutter
-        run: flutter build apk --debug --build-name=0.4.0 --build-number=42
+        run: flutter build apk --debug --build-name=0.4.1 --build-number=43
 
       - name: Validate APK
         run: |
@@ -69,6 +77,6 @@ jobs:
       - name: Upload Flutter APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sonorie-v0.4.0-r3-flutter-debug-apk
+          name: Sonorie-v0.4.1-r1-flutter-debug-apk
           path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

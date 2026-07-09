@@ -1,31 +1,15 @@
 # Sonorie Flutter Migration
 
-Versão visual: 0.4.0-r3
-Android build-name: 0.4.0
-versionCode: 42
+## v0.4.1-r1
 
-Esta pasta inicia a migração verdadeira do Sonorie para Flutter.
+Base Flutter real com leitura local inicial.
 
-## O que já é real nesta etapa
+- Não exibe player falso.
+- Não exibe biblioteca falsa.
+- Pede permissão real de mídia.
+- Varre arquivos de áudio reais em pastas públicas do Android.
+- Mostra lista real na Biblioteca.
+- Mantém dock inferior por clique.
+- Imagens de artista só entram quando forem reais e seguras.
 
-- APK Flutter real gerado pelo GitHub Actions.
-- Shell com Home, Biblioteca, Player e Ajustes.
-- Tema claro/escuro/sistema persistido localmente.
-- Onboarding local de artistas e gêneros usando SharedPreferences.
-- Bottom dock refeito em Flutter com toggle por clique na barrinha.
-
-## O que ainda não foi migrado
-
-- Leitura real das músicas locais.
-- Player offline real.
-- Notificação de mídia.
-- Capa/arte de álbum.
-- Imagem real de artista por fonte segura.
-
-Regra do projeto: não usar imagem falsa, desenho ou avatar inventado para artista.
-Se não houver imagem real e segura, mostrar apenas nome/metadados.
-
-
-## v0.4.0-r3
-
-Flutter analyze agora é diagnóstico. O build do APK continua sendo o portão real.
+Próxima etapa: player real com áudio local, fila, progresso e notificação.

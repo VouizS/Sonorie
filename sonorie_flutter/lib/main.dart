@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.0-r1';
+const String sonorieVersion = '0.4.0-r2';
 
 void main() {
   runApp(const SonorieFlutterApp());
@@ -646,7 +646,7 @@ class LibraryScreen extends StatelessWidget {
         SectionLabel('Biblioteca local'),
         SizedBox(height: 12),
         HonestFeatureCard(
-          icon: Icons.folder_music_rounded,
+          icon: Icons.music_note_rounded,
           title: 'Leitura offline em migração',
           body: 'Esta tela já é Flutter real, mas ainda não lista nem toca músicas. O próximo módulo vai conectar permissão de mídia e varredura local real.',
         ),
@@ -747,7 +747,7 @@ class SettingsScreen extends StatelessWidget {
         SettingsCard(
           rows: const [
             ('Base', 'Flutter real'),
-            ('Versão', 'v0.4.0-r1'),
+            ('Versão', 'v0.4.0-r2'),
             ('Tema', 'Persistente'),
             ('Player', 'Em migração'),
             ('Biblioteca', 'Em migração'),

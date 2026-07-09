@@ -53,7 +53,7 @@ jobs:
 
       - name: Build debug APK
         working-directory: sonorie_flutter
-        run: flutter build apk --debug --build-name=0.4.0 --build-number=40
+        run: flutter build apk --debug --build-name=0.4.0 --build-number=41
 
       - name: Validate APK
         run: |
@@ -63,6 +63,6 @@ jobs:
       - name: Upload Flutter APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sonorie-v0.4.0-r1-flutter-debug-apk
+          name: Sonorie-v0.4.0-r2-flutter-debug-apk
           path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

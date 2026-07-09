@@ -1,0 +1,68 @@
+name: Sonorie Flutter Build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "sonorie_flutter/**"
+      - ".github/workflows/flutter-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build-flutter-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Generate Android host project
+        run: |
+          set -e
+          TMP_FLUTTER="$(mktemp -d)"
+          cd "$TMP_FLUTTER"
+          flutter create . --platforms android --org com.swlab --project-name sonorie
+          rm -rf "$GITHUB_WORKSPACE/sonorie_flutter/android"
+          cp -R android "$GITHUB_WORKSPACE/sonorie_flutter/android"
+          cd "$GITHUB_WORKSPACE/sonorie_flutter"
+          python3 - <<'PY2'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          s = manifest.read_text()
+          s = s.replace('android:label="sonorie"', 'android:label="Sonorie"')
+          manifest.write_text(s)
+          PY2
+
+      - name: Pub get
+        working-directory: sonorie_flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: sonorie_flutter
+        run: flutter analyze
+
+      - name: Build debug APK
+        working-directory: sonorie_flutter
+        run: flutter build apk --debug --build-name=0.4.0 --build-number=40
+
+      - name: Validate APK
+        run: |
+          test -f sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Upload Flutter APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonorie-v0.4.0-r1-flutter-debug-apk
+          path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

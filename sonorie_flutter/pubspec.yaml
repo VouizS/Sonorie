@@ -1,0 +1,20 @@
+name: sonorie
+description: Sonorie Flutter migration shell. Offline music app migration base.
+publish_to: "none"
+version: 0.4.0+40
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

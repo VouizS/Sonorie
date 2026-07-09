@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.1-r1';
+const String sonorieVersion = '0.4.1-r2';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -108,7 +108,37 @@ class SonorieState extends ChangeNotifier {
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Audio', '/storage/emulated/0/WhatsApp/Media/WhatsApp Documents',
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio', '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Documents',
       '/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Audio',
+      '/storage/emulated/0/SnapTube Audio',
+      '/storage/emulated/0/Snaptube',
+      '/storage/3130-6234/SnapTube Audio',
+      '/storage/3130-6234/Snaptube',
+      '/storage/3130-6234/Music',
+      '/storage/3130-6234/Download',
+      '/storage/3130-6234/Downloads',
+      '/storage/3130-6234/Audio',
+
     };
+
+    try {
+      final storageRoot = Directory('/storage');
+      if (await storageRoot.exists()) {
+        await for (final entity in storageRoot.list(followLinks: false)) {
+          if (entity is! Directory) continue;
+          final base = entity.path;
+          final name = base.split('/').last.toLowerCase();
+          if (name == 'emulated' || name == 'self') continue;
+          roots.add('$base/SnapTube Audio');
+          roots.add('$base/Snaptube');
+          roots.add('$base/Music');
+          roots.add('$base/Download');
+          roots.add('$base/Downloads');
+          roots.add('$base/Audio');
+        }
+      }
+    } catch (_) {
+      // Alguns aparelhos bloqueiam listar /storage. O caminho fixo 3130-6234 continua como fallback.
+    }
+
     const extensions = <String>{'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'flac', 'amr', '3gp'};
 
     for (final root in roots) {
@@ -137,7 +167,7 @@ class SonorieState extends ChangeNotifier {
     found.sort(_trackSort);
     tracks = found;
     scanning = false;
-    scanMessage = found.isEmpty ? 'Nenhuma música encontrada nas pastas públicas.' : '${found.length} músicas reais encontradas.';
+    scanMessage = found.isEmpty ? 'Nenhuma música encontrada. Tente Music, Download ou /storage/3130-6234/SnapTube Audio.' : '${found.length} músicas reais encontradas.';
     notifyListeners();
   }
 
@@ -222,7 +252,7 @@ class LibraryScreen extends StatelessWidget {
       Expanded(child: Builder(builder: (context) {
         if (state.scanning && tracks.isEmpty) return const Center(child: CircularProgressIndicator());
         if (!state.mediaPermissionGranted) return EmptyRealState(icon: Icons.privacy_tip_rounded, title: 'Permissão necessária', text: 'O Sonorie precisa da permissão de mídia para ler músicas reais. Sem permissão, ele não inventa biblioteca.', action: 'Permitir músicas', onTap: () => unawaited(state.requestMediaPermissionAndScan()));
-        if (tracks.isEmpty) return EmptyRealState(icon: Icons.music_off_rounded, title: 'Nada encontrado', text: state.query.trim().isEmpty ? 'Não encontrei áudio nas pastas públicas. Coloque músicas em Music ou Download e atualize.' : 'Nenhum arquivo real combina com sua busca.', action: 'Atualizar varredura', onTap: () => unawaited(state.scanLocalMusic()));
+        if (tracks.isEmpty) return EmptyRealState(icon: Icons.music_off_rounded, title: 'Nada encontrado', text: state.query.trim().isEmpty ? 'Não encontrei áudio nas pastas públicas nem no SnapTube externo. Se o Android bloquear o cartão, a próxima etapa terá seletor de pasta SAF.' : 'Nenhum arquivo real combina com sua busca.', action: 'Atualizar varredura', onTap: () => unawaited(state.scanLocalMusic()));
         return ListView.builder(padding: const EdgeInsets.only(bottom: 24), itemCount: tracks.length, itemBuilder: (context, i) => RealTrackTile(track: tracks[i]));
       })),
     ]);

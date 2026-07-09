@@ -1,15 +1,12 @@
 # Sonorie Flutter Migration
 
-## v0.4.1-r1
+## v0.4.1-r2
 
-Base Flutter real com leitura local inicial.
+Correção focada:
+- adiciona busca em `/storage/3130-6234/SnapTube Audio`;
+- adiciona busca em pastas comuns do cartão externo;
+- adiciona descoberta dinâmica de `/storage/*`;
+- mantém player sem simulação;
+- bloqueia o latest antigo antes da build para evitar instalar APK velho achando que é novo.
 
-- Não exibe player falso.
-- Não exibe biblioteca falsa.
-- Pede permissão real de mídia.
-- Varre arquivos de áudio reais em pastas públicas do Android.
-- Mostra lista real na Biblioteca.
-- Mantém dock inferior por clique.
-- Imagens de artista só entram quando forem reais e seguras.
-
-Próxima etapa: player real com áudio local, fila, progresso e notificação.
+Próxima etapa: seletor de pasta SAF se o Android bloquear leitura direta do cartão.

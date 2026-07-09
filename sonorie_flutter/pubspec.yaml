@@ -1,7 +1,7 @@
 name: sonorie
 description: Sonorie Flutter migration shell. Offline music app migration base.
 publish_to: "none"
-version: 0.4.0+41
+version: 0.4.0+42
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

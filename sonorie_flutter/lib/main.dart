@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.0-r2';
+const String sonorieVersion = '0.4.0-r3';
 
 void main() {
   runApp(const SonorieFlutterApp());
@@ -747,7 +747,7 @@ class SettingsScreen extends StatelessWidget {
         SettingsCard(
           rows: const [
             ('Base', 'Flutter real'),
-            ('Versão', 'v0.4.0-r2'),
+            ('Versão', 'v0.4.0-r3'),
             ('Tema', 'Persistente'),
             ('Player', 'Em migração'),
             ('Biblioteca', 'Em migração'),

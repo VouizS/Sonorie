@@ -1,8 +1,8 @@
 # Sonorie Flutter Migration
 
-Versão visual: 0.4.0-r2
+Versão visual: 0.4.0-r3
 Android build-name: 0.4.0
-versionCode: 41
+versionCode: 42
 
 Esta pasta inicia a migração verdadeira do Sonorie para Flutter.
 
@@ -24,3 +24,8 @@ Esta pasta inicia a migração verdadeira do Sonorie para Flutter.
 
 Regra do projeto: não usar imagem falsa, desenho ou avatar inventado para artista.
 Se não houver imagem real e segura, mostrar apenas nome/metadados.
+
+
+## v0.4.0-r3
+
+Flutter analyze agora é diagnóstico. O build do APK continua sendo o portão real.

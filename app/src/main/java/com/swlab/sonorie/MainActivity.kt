@@ -1548,7 +1548,7 @@ fun SettingsScreen(
 
         item {
             Text("Ajustes", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold)
-            Text("Sonorie v0.3.7", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Sonorie v0.3.7-r1", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             OutlinedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))) {
@@ -1875,96 +1875,6 @@ fun ArtistTasteChip(label: String) {
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
-    }
-}
-
-
-) {
-    val artists = remember(songs, favoriteArtists) {
-        val fromSongs = songs
-            .map { it.artist.trim() }
-            .filter { it.isNotBlank() && it != "<unknown>" && it.lowercase() != "unknown" }
-            .distinct()
-
-        val merged = favoriteArtists.toList() + fromSongs.filter { artist ->
-            favoriteArtists.none { fav -> fav.equals(artist, ignoreCase = true) }
-        }
-        merged.take(12)
-    }
-
-    if (artists.isNotEmpty()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp)
-        ) {
-            Text(
-                text = "Artistas que você curte",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                artists.forEach { artist ->
-                    Surface(
-                        modifier = Modifier
-                            .width(152.dp)
-                            .clickable { onArtistSelected(artist) },
-                        shape = RoundedCornerShape(28.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-                        tonalElevation = 4.dp,
-                        shadowElevation = 6.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(82.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        MaterialTheme.colorScheme.primary.copy(
-                                            alpha = if (favoriteArtists.any { it.equals(artist, ignoreCase = true) }) 0.38f else 0.22f
-                                        )
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = artist.take(1).uppercase(),
-                                    style = MaterialTheme.typography.headlineLarge,
-                                    fontWeight = FontWeight.Black,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = artist,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = if (favoriteArtists.any { it.equals(artist, ignoreCase = true) }) "Favorito" else "Relacionado",
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

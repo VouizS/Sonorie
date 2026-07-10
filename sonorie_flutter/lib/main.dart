@@ -8,7 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.2-r1';
+const String sonorieVersion = '0.4.2-r2';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -526,6 +526,7 @@ class _SonorieRootState extends State<SonorieRoot> {
     ];
 
     return Scaffold(
+      extendBody: true,
       body: SafeArea(
         bottom: false,
         child: IndexedStack(index: selectedIndex, children: screens),
@@ -1263,7 +1264,7 @@ class SettingsScreen extends StatelessWidget {
             _InfoCard(
               icon: Icons.route_rounded,
               title: 'Próxima evolução',
-              text: 'v0.4.2-r2: reprodução em segundo plano, notificação de mídia e seletor de pasta SAF para cartões bloqueados pelo Android.',
+              text: 'v0.4.3: reprodução persistente em segundo plano, notificação de mídia e seletor de pasta SAF.',
             ),
           ],
         );
@@ -1290,64 +1291,106 @@ class SonorieBottomDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onToggle,
-                child: SizedBox(
-                  height: 30,
-                  width: double.infinity,
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      width: expanded ? 62 : 82,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.outline,
-                        borderRadius: BorderRadius.circular(10),
+    final scheme = Theme.of(context).colorScheme;
+
+    return Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Semantics(
+                  button: true,
+                  label: expanded
+                      ? 'Recolher controles inferiores'
+                      : 'Mostrar controles inferiores',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: onToggle,
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 24,
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          width: expanded ? 62 : 82,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: scheme.outline,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              AnimatedCrossFade(
-                duration: const Duration(milliseconds: 240),
-                crossFadeState: expanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-                firstChild: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    if (controller.currentTrack != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                        child: _MiniPlayer(controller: controller),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: NavigationBar(
-                        selectedIndex: selectedIndex,
-                        onDestinationSelected: onSelected,
-                        destinations: const <NavigationDestination>[
-                          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Início'),
-                          NavigationDestination(icon: Icon(Icons.music_note_rounded), label: 'Biblioteca'),
-                          NavigationDestination(icon: Icon(Icons.play_circle_rounded), label: 'Player'),
-                          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Ajustes'),
-                        ],
-                      ),
-                    ),
-                  ],
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.bottomCenter,
+                  child: expanded
+                      ? Column(
+                          key: const ValueKey<String>('dock-expanded'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            if (controller.currentTrack != null)
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+                                child: _MiniPlayer(controller: controller),
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                              child: Material(
+                                color: scheme.surfaceContainerHighest,
+                                elevation: 0,
+                                borderRadius: BorderRadius.circular(30),
+                                clipBehavior: Clip.antiAlias,
+                                child: NavigationBar(
+                                  height: 84,
+                                  backgroundColor: Colors.transparent,
+                                  elevation: 0,
+                                  indicatorColor: scheme.secondaryContainer,
+                                  selectedIndex: selectedIndex,
+                                  onDestinationSelected: onSelected,
+                                  destinations: const <NavigationDestination>[
+                                    NavigationDestination(
+                                      icon: Icon(Icons.home_rounded),
+                                      label: 'Início',
+                                    ),
+                                    NavigationDestination(
+                                      icon: Icon(Icons.music_note_rounded),
+                                      label: 'Biblioteca',
+                                    ),
+                                    NavigationDestination(
+                                      icon: Icon(Icons.play_circle_rounded),
+                                      label: 'Player',
+                                    ),
+                                    NavigationDestination(
+                                      icon: Icon(Icons.settings_rounded),
+                                      label: 'Ajustes',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : const SizedBox(
+                          key: ValueKey<String>('dock-collapsed'),
+                          width: double.infinity,
+                          height: 0,
+                        ),
                 ),
-                secondChild: const SizedBox(height: 2, width: double.infinity),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }

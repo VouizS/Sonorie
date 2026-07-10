@@ -1,12 +1,23 @@
 # Sonorie Flutter Migration
 
-## v0.4.1-r2
+## v0.4.2-r1
 
-Correção focada:
-- adiciona busca em `/storage/3130-6234/SnapTube Audio`;
-- adiciona busca em pastas comuns do cartão externo;
-- adiciona descoberta dinâmica de `/storage/*`;
-- mantém player sem simulação;
-- bloqueia o latest antigo antes da build para evitar instalar APK velho achando que é novo.
+Implementação real:
 
-Próxima etapa: seletor de pasta SAF se o Android bloquear leitura direta do cartão.
+- player local com `just_audio`;
+- tocar, pausar, próxima, anterior e seek;
+- progresso e duração reais;
+- fila baseada na lista ou busca atual;
+- mini player real;
+- favoritos locais;
+- cards de artistas e gêneros com altura e espaçamento corrigidos;
+- leitura das pastas internas, externas e SnapTube Audio;
+- nenhum controle falso aparece sem uma música carregada.
+
+Ainda não incluído nesta versão:
+
+- reprodução persistente em segundo plano;
+- notificação de mídia;
+- seletor de pasta SAF.
+
+Esses três pontos ficam para a próxima etapa.

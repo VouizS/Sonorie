@@ -18,3 +18,11 @@ Próxima evolução:
 - reprodução persistente em segundo plano;
 - notificação de mídia;
 - seletor de pasta SAF.
+
+## Build Rescue
+
+- espelhos Maven configurados antes dos repositórios oficiais;
+- quatro tentativas reais de compilação;
+- limpeza seletiva do cache Kotlin/Gradle após falha;
+- espera progressiva entre tentativas;
+- artifact exclusivo ligado ao commit correto.

@@ -68,7 +68,93 @@ jobs:
 
       - name: Build debug APK
         working-directory: sonorie_flutter
-        run: flutter build apk --debug --build-name=0.4.2 --build-number=46
+        run: |
+          # SONORIE_NETWORK_RESCUE_V2
+          set -euo pipefail
+          mkdir -p "$HOME/.gradle/init.d"
+          cat > "$HOME/.gradle/init.d/sonorie-network-rescue.gradle" <<'GRADLE_RESCUE'
+          def sonorieRepositories = { handler ->
+              handler.maven { url = 'https://maven.aliyun.com/repository/google' }
+              handler.maven { url = 'https://maven.aliyun.com/repository/central' }
+              handler.maven { url = 'https://maven.aliyun.com/repository/gradle-plugin' }
+              handler.maven { url = 'https://maven.aliyun.com/repository/public' }
+              handler.maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
+              handler.google()
+              handler.mavenCentral()
+              handler.gradlePluginPortal()
+          }
+          
+          gradle.beforeSettings { settings ->
+              try {
+                  settings.pluginManagement.repositories.clear()
+                  sonorieRepositories(settings.pluginManagement.repositories)
+              } catch (Throwable ignored) { }
+          }
+          
+          settingsEvaluated { settings ->
+              try {
+                  settings.pluginManagement.repositories.clear()
+                  sonorieRepositories(settings.pluginManagement.repositories)
+              } catch (Throwable ignored) { }
+          
+              try {
+                  settings.dependencyResolutionManagement.repositories.clear()
+                  sonorieRepositories(settings.dependencyResolutionManagement.repositories)
+              } catch (Throwable ignored) { }
+          }
+          
+          allprojects { project ->
+              try {
+                  project.buildscript.repositories.clear()
+                  sonorieRepositories(project.buildscript.repositories)
+              } catch (Throwable ignored) { }
+          
+              try {
+                  project.repositories.clear()
+                  sonorieRepositories(project.repositories)
+              } catch (Throwable ignored) { }
+          }
+          GRADLE_RESCUE
+          
+          mkdir -p "$HOME/.gradle"
+          cat >> "$HOME/.gradle/gradle.properties" <<'GRADLE_PROPERTIES'
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.caching=true
+          org.gradle.internal.http.connectionTimeout=180000
+          org.gradle.internal.http.socketTimeout=180000
+          GRADLE_PROPERTIES
+          
+          flutter pub get
+          
+          build_ok=0
+          for attempt in 1 2 3 4; do
+            echo "=== Sonorie Gradle/Maven attempt $attempt/4 ==="
+          
+            if flutter build apk --debug --build-name=0.4.2 --build-number=47; then
+              build_ok=1
+              break
+            fi
+          
+            if [ -x android/gradlew ]; then
+              (cd android && ./gradlew --stop) || true
+            fi
+          
+            rm -rf "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin" || true
+            rm -rf "$HOME/.gradle/caches/modules-2"/metadata-* || true
+          
+            if [ "$attempt" -ge 2 ]; then
+              flutter clean || true
+              flutter pub get
+            fi
+          
+            sleep $((attempt * 30))
+          done
+          
+          if [ "$build_ok" -ne 1 ]; then
+            echo "Sonorie Network Rescue esgotou as quatro tentativas."
+            exit 1
+          fi
 
       - name: Validate APK
         run: |
@@ -78,6 +164,6 @@ jobs:
       - name: Upload Flutter APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sonorie-v0.4.2-r2-flutter-debug-apk
+          name: Sonorie-v0.4.2-r2-network-rescue-flutter-debug-apk
           path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

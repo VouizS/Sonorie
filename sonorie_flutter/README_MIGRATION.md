@@ -1,28 +1,17 @@
 # Sonorie Flutter Migration
 
-## v0.4.2-r2
+## v0.4.3-r1 — Background Media + Official Icon
 
-Correção visual isolada do rodapé:
+Base preservada da v0.4.2-r2 com:
 
-- `Scaffold.extendBody` ativado;
-- dock exterior transparente;
-- navegação recortada dentro de um `Material` arredondado;
-- remoção do retângulo escuro que ligava mini player e navegação;
-- remoção do `AnimatedCrossFade` que mantinha espaço invisível;
-- mini player real preservado;
-- toggle por clique preservado;
-- biblioteca, busca, fila, favoritos e player não foram reescritos.
+- reprodução local real;
+- fila real carregada no `just_audio`;
+- notificação de mídia com título, artista e controles;
+- controles na tela de bloqueio;
+- reprodução persistente fora da interface;
+- anterior/próxima integrados à fila do sistema;
+- pedido real de permissão de notificações;
+- ícone oficial SW no APK, instalação, gaveta, recentes e ícone adaptativo;
+- dock arredondado e transparente preservado.
 
-Próxima evolução:
-
-- reprodução persistente em segundo plano;
-- notificação de mídia;
-- seletor de pasta SAF.
-
-## Build Rescue
-
-- espelhos Maven configurados antes dos repositórios oficiais;
-- quatro tentativas reais de compilação;
-- limpeza seletiva do cache Kotlin/Gradle após falha;
-- espera progressiva entre tentativas;
-- artifact exclusivo ligado ao commit correto.
+Próxima evolução: seletor SAF, capas locais reais e recuperação refinada da fila.

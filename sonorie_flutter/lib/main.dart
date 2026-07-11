@@ -5,13 +5,27 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.2-r2';
+const String sonorieVersion = '0.4.3-r1';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.swlab.sonorie.channel.audio',
+    androidNotificationChannelName: 'Sonorie • reprodução',
+    androidNotificationChannelDescription:
+        'Música, controles e reprodução do Sonorie em segundo plano.',
+    androidNotificationIcon: 'drawable/ic_stat_sonorie',
+    androidNotificationOngoing: true,
+    androidStopForegroundOnPause: false,
+    androidShowNotificationBadge: false,
+    notificationColor: const Color(0xFF6E58A8),
+    fastForwardInterval: const Duration(seconds: 10),
+    rewindInterval: const Duration(seconds: 10),
+  );
   final controller = SonorieController();
   await controller.initialize();
   runApp(SonorieApp(controller: controller));
@@ -152,6 +166,7 @@ class SonorieController extends ChangeNotifier {
   bool onboarded = false;
   bool scanning = false;
   bool permissionGranted = false;
+  bool notificationPermissionGranted = false;
   String? libraryMessage;
   String? playerMessage;
   ThemeMode themeMode = ThemeMode.system;
@@ -166,7 +181,6 @@ class SonorieController extends ChangeNotifier {
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
   bool isPlaying = false;
-  bool _handlingCompletion = false;
   int _lastNotifiedSecond = -1;
 
   AudioTrack? get currentTrack {
@@ -194,19 +208,23 @@ class SonorieController extends ChangeNotifier {
       duration = value ?? Duration.zero;
       notifyListeners();
     });
+    player.currentIndexStream.listen((value) {
+      if (value == null || value < 0 || value >= queue.length) return;
+      currentIndex = value;
+      position = player.position;
+      duration = player.duration ?? Duration.zero;
+      notifyListeners();
+    });
     player.playerStateStream.listen((state) {
       isPlaying = state.playing;
-      notifyListeners();
-      if (state.processingState == ProcessingState.completed && !_handlingCompletion) {
-        _handlingCompletion = true;
-        Future<void>.microtask(() async {
-          await playNext();
-          _handlingCompletion = false;
-        });
+      if (state.processingState == ProcessingState.completed) {
+        position = duration;
       }
+      notifyListeners();
     });
 
     permissionGranted = await _hasMediaPermission();
+    notificationPermissionGranted = await _hasNotificationPermission();
     initialized = true;
     notifyListeners();
     if (permissionGranted) {
@@ -270,6 +288,32 @@ class SonorieController extends ChangeNotifier {
     }
     notifyListeners();
     return permissionGranted;
+  }
+
+
+  Future<bool> _hasNotificationPermission() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final status = await Permission.notification.status;
+      return status.isGranted;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> requestNotificationPermission() async {
+    if (!Platform.isAndroid) {
+      notificationPermissionGranted = true;
+      return true;
+    }
+    try {
+      final status = await Permission.notification.request();
+      notificationPermissionGranted = status.isGranted;
+    } catch (_) {
+      notificationPermissionGranted = false;
+    }
+    notifyListeners();
+    return notificationPermissionGranted;
   }
 
   Future<void> scanLibrary({bool requestPermission = true}) async {
@@ -358,6 +402,26 @@ class SonorieController extends ChangeNotifier {
     return roots;
   }
 
+  MediaItem _mediaItemFor(AudioTrack track) {
+    return MediaItem(
+      id: track.path,
+      album: track.folder,
+      title: track.title,
+      artist: track.artist,
+      extras: <String, dynamic>{
+        'path': track.path,
+        'extension': track.extension,
+      },
+    );
+  }
+
+  AudioSource _audioSourceFor(AudioTrack track) {
+    return AudioSource.uri(
+      Uri.file(track.path),
+      tag: _mediaItemFor(track),
+    );
+  }
+
   Future<void> playTrack(AudioTrack track, {List<AudioTrack>? fromQueue}) async {
     final selectedQueue = fromQueue == null || fromQueue.isEmpty ? songs : fromQueue;
     final index = selectedQueue.indexWhere((item) => item.path == track.path);
@@ -368,8 +432,20 @@ class SonorieController extends ChangeNotifier {
     playerMessage = null;
     notifyListeners();
 
+    if (!notificationPermissionGranted) {
+      await requestNotificationPermission();
+    }
+
     try {
-      await player.setFilePath(track.path);
+      final playlist = ConcatenatingAudioSource(
+        useLazyPreparation: true,
+        children: queue.map(_audioSourceFor).toList(growable: false),
+      );
+      await player.setAudioSource(
+        playlist,
+        initialIndex: currentIndex,
+        initialPosition: Duration.zero,
+      );
       await player.play();
     } catch (error) {
       playerMessage = 'Não foi possível tocar este arquivo: $error';
@@ -384,7 +460,7 @@ class SonorieController extends ChangeNotifier {
       await player.pause();
     } else {
       if (player.processingState == ProcessingState.completed) {
-        await player.seek(Duration.zero);
+        await player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
       }
       await player.play();
     }
@@ -392,27 +468,25 @@ class SonorieController extends ChangeNotifier {
 
   Future<void> playNext() async {
     if (queue.isEmpty) return;
-    final next = currentIndex + 1;
-    if (next >= queue.length) {
-      await player.pause();
-      await player.seek(Duration.zero);
+    if (player.hasNext) {
+      await player.seekToNext();
       return;
     }
-    await playTrack(queue[next], fromQueue: queue);
+    await player.pause();
+    await player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
   }
 
   Future<void> playPrevious() async {
     if (queue.isEmpty) return;
     if (position > const Duration(seconds: 4)) {
-      await player.seek(Duration.zero);
+      await player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
       return;
     }
-    final previous = currentIndex - 1;
-    if (previous < 0) {
-      await player.seek(Duration.zero);
+    if (player.hasPrevious) {
+      await player.seekToPrevious();
       return;
     }
-    await playTrack(queue[previous], fromQueue: queue);
+    await player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
   }
 
   Future<void> seek(Duration value) => player.seek(value);
@@ -1241,8 +1315,10 @@ class SettingsScreen extends StatelessWidget {
                   _StatusRow(label: 'Base', value: 'Flutter real'),
                   _StatusRow(label: 'Versão', value: sonorieVersion),
                   _StatusRow(label: 'Permissão de mídia', value: controller.permissionGranted ? 'Permitida' : 'Pendente'),
+                  _StatusRow(label: 'Notificações', value: controller.notificationPermissionGranted ? 'Permitidas' : 'Pendentes'),
                   _StatusRow(label: 'Biblioteca', value: controller.scanning ? 'Varrendo' : '${controller.songs.length} músicas'),
                   _StatusRow(label: 'Player', value: controller.currentTrack == null ? 'Pronto' : 'Conectado'),
+                  const _StatusRow(label: 'Segundo plano', value: 'Serviço de mídia ativo'),
                   const _StatusRow(label: 'Dock inferior', value: 'Toggle por clique'),
                   const _StatusRow(label: 'Imagens de artista', value: 'Somente real/segura'),
                 ],
@@ -1260,11 +1336,19 @@ class SettingsScreen extends StatelessWidget {
               icon: const Icon(Icons.refresh_rounded),
               label: Text(controller.scanning ? 'Varrendo músicas...' : 'Atualizar biblioteca'),
             ),
+            if (!controller.notificationPermissionGranted)
+              const SizedBox(height: 12),
+            if (!controller.notificationPermissionGranted)
+              FilledButton.tonalIcon(
+                onPressed: controller.requestNotificationPermission,
+                icon: const Icon(Icons.notifications_active_rounded),
+                label: const Text('Permitir notificações de música'),
+              ),
             const SizedBox(height: 22),
             _InfoCard(
               icon: Icons.route_rounded,
               title: 'Próxima evolução',
-              text: 'v0.4.3: reprodução persistente em segundo plano, notificação de mídia e seletor de pasta SAF.',
+              text: 'v0.4.4: seletor de pasta SAF, capas locais reais e recuperação refinada da fila.',
             ),
           ],
         );

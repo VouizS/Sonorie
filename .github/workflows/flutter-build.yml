@@ -66,10 +66,24 @@ jobs:
 
           s = s.replace('android:label="sonorie"', 'android:label="Sonorie"')
           s = re.sub(
-              r'android:name="(?:\.MainActivity|com\.swlab\.sonorie\.MainActivity)"',
-              'android:name="com.ryanheise.audioservice.AudioServiceActivity"',
+              r'android:name="(?:com\.ryanheise\.audioservice\.AudioServiceActivity|com\.swlab\.sonorie\.MainActivity)"',
+              'android:name=".MainActivity"',
               s,
               count=1,
+          )
+
+          activity = Path(
+              "android/app/src/main/kotlin/com/swlab/sonorie/MainActivity.kt"
+          )
+          activity.parent.mkdir(parents=True, exist_ok=True)
+          activity.write_text(
+              """package com.swlab.sonorie
+
+import com.ryanheise.audioservice.AudioServiceActivity
+
+class MainActivity: AudioServiceActivity()
+""",
+              encoding="utf-8",
           )
 
           if 'android:requestLegacyExternalStorage=' not in s:
@@ -112,11 +126,21 @@ jobs:
 
           manifest.write_text(s, encoding="utf-8")
 
+          keep = Path("android/app/src/main/res/raw/keep.xml")
+          keep.parent.mkdir(parents=True, exist_ok=True)
+          keep.write_text(
+              """<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_sonorie,@drawable/ic_launcher_foreground,@drawable/ic_launcher_monochrome" />
+""",
+              encoding="utf-8",
+          )
+
           required = [
               "android.permission.WAKE_LOCK",
               "android.permission.FOREGROUND_SERVICE",
               "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-              "com.ryanheise.audioservice.AudioServiceActivity",
+              ".MainActivity",
               "com.ryanheise.audioservice.AudioService",
               "com.ryanheise.audioservice.MediaButtonReceiver",
               "@mipmap/ic_launcher_round",
@@ -129,6 +153,8 @@ jobs:
           test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           test -f android/app/src/main/res/drawable/ic_stat_sonorie.png
           test -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          test -f android/app/src/main/kotlin/com/swlab/sonorie/MainActivity.kt
+          test -f android/app/src/main/res/raw/keep.xml
 
       - name: Pub get
         working-directory: sonorie_flutter
@@ -204,7 +230,7 @@ jobs:
           build_ok=0
           for attempt in 1 2 3 4; do
             echo "=== Sonorie Gradle/Maven attempt $attempt/4 ==="
-            if flutter build apk --debug --build-name=0.4.3 --build-number=48; then
+            if flutter build apk --debug --build-name=0.4.3 --build-number=49; then
               build_ok=1
               break
             fi
@@ -233,6 +259,6 @@ jobs:
       - name: Upload Flutter APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sonorie-v0.4.3-r1-background-media-official-icon-flutter-debug-apk
+          name: Sonorie-v0.4.3-r2-startup-guard-audioservice-flutter-debug-apk
           path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

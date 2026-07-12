@@ -1,6 +1,6 @@
 # Sonorie Flutter Migration
 
-## v0.4.3-r1 — Background Media + Official Icon
+## v0.4.3-r2 — Background Media + Official Icon
 
 Base preservada da v0.4.2-r2 com:
 

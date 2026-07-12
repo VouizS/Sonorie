@@ -9,27 +9,172 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.3-r1';
+const String sonorieVersion = '0.4.3-r2';
 
-Future<void> main() async {
+bool sonorieBackgroundReady = false;
+String? sonorieBackgroundError;
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await JustAudioBackground.init(
-    androidNotificationChannelId: 'com.swlab.sonorie.channel.audio',
-    androidNotificationChannelName: 'Sonorie • reprodução',
-    androidNotificationChannelDescription:
-        'Música, controles e reprodução do Sonorie em segundo plano.',
-    androidNotificationIcon: 'drawable/ic_stat_sonorie',
-    androidNotificationOngoing: true,
-    androidStopForegroundOnPause: false,
-    androidShowNotificationBadge: false,
-    notificationColor: const Color(0xFF6E58A8),
-    fastForwardInterval: const Duration(seconds: 10),
-    rewindInterval: const Duration(seconds: 10),
-  );
-  final controller = SonorieController();
-  await controller.initialize();
-  runApp(SonorieApp(controller: controller));
+  runApp(const SonorieBootstrap());
 }
+
+class SonorieBootstrap extends StatefulWidget {
+  const SonorieBootstrap({super.key});
+
+  @override
+  State<SonorieBootstrap> createState() => _SonorieBootstrapState();
+}
+
+class _SonorieBootstrapState extends State<SonorieBootstrap> {
+  SonorieController? _controller;
+  Object? _startupError;
+  bool _starting = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    if (mounted) {
+      setState(() {
+        _starting = true;
+        _startupError = null;
+      });
+    }
+
+    sonorieBackgroundReady = false;
+    sonorieBackgroundError = null;
+
+    try {
+      await JustAudioBackground.init(
+        androidNotificationChannelId: 'com.swlab.sonorie.channel.audio',
+        androidNotificationChannelName: 'Sonorie • reprodução',
+        androidNotificationChannelDescription:
+            'Música, controles e reprodução do Sonorie em segundo plano.',
+        androidNotificationIcon: 'drawable/ic_stat_sonorie',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: false,
+        androidShowNotificationBadge: false,
+        notificationColor: const Color(0xFF6E58A8),
+        fastForwardInterval: const Duration(seconds: 10),
+        rewindInterval: const Duration(seconds: 10),
+      ).timeout(const Duration(seconds: 10));
+      sonorieBackgroundReady = true;
+    } catch (error, stackTrace) {
+      sonorieBackgroundError = error.toString();
+      debugPrint('Sonorie background init fallback: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    final controller = SonorieController();
+
+    try {
+      await controller.initialize();
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _controller = controller;
+        _starting = false;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Sonorie controller init error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      controller.dispose();
+
+      if (!mounted) return;
+      setState(() {
+        _startupError = error;
+        _starting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller != null) {
+      return SonorieApp(controller: controller);
+    }
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorSchemeSeed: const Color(0xFFB69CFF),
+        scaffoldBackgroundColor: const Color(0xFF0D0A12),
+      ),
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(
+                    Icons.music_note_rounded,
+                    size: 72,
+                    color: Color(0xFFC7AEFF),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Sonorie',
+                    style: TextStyle(
+                      fontSize: 34,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _starting
+                        ? 'Preparando sua biblioteca musical...'
+                        : 'Não foi possível concluir a inicialização.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 17),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_starting)
+                    const CircularProgressIndicator()
+                  else ...<Widget>[
+                    Text(
+                      '${_startupError ?? 'Erro desconhecido'}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    FilledButton.icon(
+                      onPressed: _start,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Tentar novamente'),
+                    ),
+                  ],
+                  if (sonorieBackgroundError != null) ...<Widget>[
+                    const SizedBox(height: 20),
+                    const Text(
+                      'O serviço de segundo plano não respondeu. '
+                      'O Sonorie continuará tentando abrir com o player local.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
 class AudioTrack {
   const AudioTrack({
@@ -400,6 +545,26 @@ class SonorieController extends ChangeNotifier {
     } catch (_) {}
 
     return roots;
+  }
+
+  MediaItem _mediaItemFor(AudioTrack track) {
+    return MediaItem(
+      id: track.path,
+      album: track.folder,
+      title: track.title,
+      artist: track.artist,
+      extras: <String, dynamic>{
+        'path': track.path,
+        'extension': track.extension,
+      },
+    );
+  }
+
+  AudioSource _audioSourceFor(AudioTrack track) {
+    return AudioSource.uri(
+      Uri.file(track.path),
+      tag: _mediaItemFor(track),
+    );
   }
 
   MediaItem _mediaItemFor(AudioTrack track) {
@@ -1318,7 +1483,10 @@ class SettingsScreen extends StatelessWidget {
                   _StatusRow(label: 'Notificações', value: controller.notificationPermissionGranted ? 'Permitidas' : 'Pendentes'),
                   _StatusRow(label: 'Biblioteca', value: controller.scanning ? 'Varrendo' : '${controller.songs.length} músicas'),
                   _StatusRow(label: 'Player', value: controller.currentTrack == null ? 'Pronto' : 'Conectado'),
-                  const _StatusRow(label: 'Segundo plano', value: 'Serviço de mídia ativo'),
+                  _StatusRow(
+                    label: 'Segundo plano',
+                    value: sonorieBackgroundReady ? 'Ativo' : 'Modo local seguro',
+                  ),
                   const _StatusRow(label: 'Dock inferior', value: 'Toggle por clique'),
                   const _StatusRow(label: 'Imagens de artista', value: 'Somente real/segura'),
                 ],

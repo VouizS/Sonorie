@@ -336,7 +336,6 @@ class SonorieController extends ChangeNotifier {
   bool shuffleEnabled = false;
   SonorieRepeatMode repeatMode = SonorieRepeatMode.off;
   int _lastNotifiedSecond = -1;
-  final math.Random _random = math.Random();
 
   AudioTrack? get currentTrack {
     if (currentIndex < 0 || currentIndex >= queue.length) return null;
@@ -681,14 +680,12 @@ class SonorieController extends ChangeNotifier {
     try {
       final playlist = ConcatenatingAudioSource(
         useLazyPreparation: true,
-        shuffleOrder: DefaultShuffleOrder(),
         children: queue.map(_audioSourceFor).toList(growable: false),
       );
       await player.setAudioSource(
         playlist,
         initialIndex: currentIndex,
         initialPosition: Duration.zero,
-        preload: true,
       );
       await player.setShuffleModeEnabled(shuffleEnabled);
       await player.setLoopMode(switch (repeatMode) {

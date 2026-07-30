@@ -9,7 +9,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String sonorieVersion = '0.4.3-r2';
+const String sonorieVersion = '0.4.4-r1';
 
 bool sonorieBackgroundReady = false;
 String? sonorieBackgroundError;
@@ -103,7 +103,12 @@ class _SonorieBootstrapState extends State<SonorieBootstrap> {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.system,
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorSchemeSeed: const Color(0xFFB69CFF),
+      ),
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
@@ -303,6 +308,8 @@ String _cleanAudioName(String input) {
   return (fallbackArtist, raw.isEmpty ? 'Sem título' : raw);
 }
 
+enum SonorieRepeatMode { off, all, one }
+
 class SonorieController extends ChangeNotifier {
   final AudioPlayer player = AudioPlayer();
 
@@ -326,7 +333,10 @@ class SonorieController extends ChangeNotifier {
   Duration position = Duration.zero;
   Duration duration = Duration.zero;
   bool isPlaying = false;
+  bool shuffleEnabled = false;
+  SonorieRepeatMode repeatMode = SonorieRepeatMode.off;
   int _lastNotifiedSecond = -1;
+  final math.Random _random = math.Random();
 
   AudioTrack? get currentTrack {
     if (currentIndex < 0 || currentIndex >= queue.length) return null;
@@ -339,6 +349,8 @@ class SonorieController extends ChangeNotifier {
     favoriteArtists.addAll(_prefs?.getStringList('favoriteArtists') ?? const <String>[]);
     favoriteGenres.addAll(_prefs?.getStringList('favoriteGenres') ?? const <String>[]);
     favoritePaths.addAll(_prefs?.getStringList('favoritePaths') ?? const <String>[]);
+    shuffleEnabled = _prefs?.getBool('shuffleEnabled') ?? false;
+    repeatMode = _decodeRepeatMode(_prefs?.getString('repeatMode'));
     themeMode = _decodeTheme(_prefs?.getString('themeMode'));
 
     player.positionStream.listen((value) {
@@ -354,7 +366,12 @@ class SonorieController extends ChangeNotifier {
       notifyListeners();
     });
     player.currentIndexStream.listen((value) {
-      if (value == null || value < 0 || value >= queue.length) return;
+      if (value == null || value < 0) {
+        // Não reseta currentIndex ao chegar no fim em repeat-one/all; deixamos o
+        // fluxo abaixo tratar.
+        return;
+      }
+      if (value >= queue.length) return;
       currentIndex = value;
       position = player.position;
       duration = player.duration ?? Duration.zero;
@@ -364,8 +381,17 @@ class SonorieController extends ChangeNotifier {
       isPlaying = state.playing;
       if (state.processingState == ProcessingState.completed) {
         position = duration;
+        _handleTrackEnded();
       }
       notifyListeners();
+    });
+    player.sequenceStateStream.listen((state) {
+      final idx = state?.currentIndex;
+      if (idx == null) return;
+      if (idx >= 0 && idx < queue.length && idx != currentIndex) {
+        currentIndex = idx;
+        notifyListeners();
+      }
     });
 
     permissionGranted = await _hasMediaPermission();
@@ -374,6 +400,44 @@ class SonorieController extends ChangeNotifier {
     notifyListeners();
     if (permissionGranted) {
       unawaited(scanLibrary(requestPermission: false));
+    }
+  }
+
+  SonorieRepeatMode _decodeRepeatMode(String? raw) {
+    switch (raw) {
+      case 'all':
+        return SonorieRepeatMode.all;
+      case 'one':
+        return SonorieRepeatMode.one;
+      default:
+        return SonorieRepeatMode.off;
+    }
+  }
+
+  void _handleTrackEnded() {
+    switch (repeatMode) {
+      case SonorieRepeatMode.one:
+        player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
+        player.play();
+        return;
+      case SonorieRepeatMode.all:
+        if (player.hasNext) {
+          player.seekToNext();
+          player.play();
+        } else {
+          player.seek(Duration.zero, index: 0);
+          player.play();
+        }
+        return;
+      case SonorieRepeatMode.off:
+        if (player.hasNext) {
+          player.seekToNext();
+          player.play();
+        } else {
+          // Para a reprodução no fim da fila
+          isPlaying = false;
+        }
+        return;
     }
   }
 
@@ -396,6 +460,37 @@ class SonorieController extends ChangeNotifier {
             ? 'dark'
             : 'system';
     await _prefs?.setString('themeMode', raw);
+    notifyListeners();
+  }
+
+  Future<void> toggleShuffle() async {
+    shuffleEnabled = !shuffleEnabled;
+    await _prefs?.setBool('shuffleEnabled', shuffleEnabled);
+    if (shuffleEnabled && queue.isNotEmpty) {
+      await player.setShuffleModeEnabled(true);
+    } else {
+      await player.setShuffleModeEnabled(false);
+    }
+    notifyListeners();
+  }
+
+  Future<void> cycleRepeat() async {
+    repeatMode = switch (repeatMode) {
+      SonorieRepeatMode.off => SonorieRepeatMode.all,
+      SonorieRepeatMode.all => SonorieRepeatMode.one,
+      SonorieRepeatMode.one => SonorieRepeatMode.off,
+    };
+    final raw = switch (repeatMode) {
+      SonorieRepeatMode.off => 'off',
+      SonorieRepeatMode.all => 'all',
+      SonorieRepeatMode.one => 'one',
+    };
+    await _prefs?.setString('repeatMode', raw);
+    await player.setLoopMode(switch (repeatMode) {
+      SonorieRepeatMode.off => LoopMode.off,
+      SonorieRepeatMode.all => LoopMode.all,
+      SonorieRepeatMode.one => LoopMode.one,
+    });
     notifyListeners();
   }
 
@@ -488,6 +583,7 @@ class SonorieController extends ChangeNotifier {
 
     try {
       final roots = await _discoverRoots();
+      debugPrint('Sonorie: varrendo ${roots.length} pastas raiz -> $roots');
       final raw = await compute<List<String>, List<Map<String, dynamic>>>(
         scanAudioFiles,
         roots.toList(),
@@ -496,10 +592,11 @@ class SonorieController extends ChangeNotifier {
         ..clear()
         ..addAll(raw.map(AudioTrack.fromMap));
       libraryMessage = songs.isEmpty
-          ? 'Nenhuma música encontrada nas pastas liberadas.'
+          ? 'Nenhuma música encontrada. Coloque arquivos em /Music ou /Download e toque em Atualizar.'
           : '${songs.length} músicas reais encontradas.';
     } catch (error) {
       libraryMessage = 'Falha ao varrer músicas: $error';
+      debugPrint('Sonorie scan error: $error');
     } finally {
       scanning = false;
       notifyListeners();
@@ -509,19 +606,16 @@ class SonorieController extends ChangeNotifier {
   Future<Set<String>> _discoverRoots() async {
     final roots = <String>{
       '/storage/emulated/0/Music',
+      '/storage/emulated/0/Audio',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Downloads',
       '/storage/emulated/0/Recordings',
+      '/storage/emulated/0/Podcasts',
+      '/storage/emulated/0/Ringtones',
       '/storage/emulated/0/WhatsApp/Media/WhatsApp Audio',
       '/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Audio',
       '/storage/emulated/0/SnapTube Audio',
       '/storage/emulated/0/Snaptube',
-      '/storage/3130-6234/SnapTube Audio',
-      '/storage/3130-6234/Snaptube',
-      '/storage/3130-6234/Music',
-      '/storage/3130-6234/Download',
-      '/storage/3130-6234/Downloads',
-      '/storage/3130-6234/Audio',
     };
 
     try {
@@ -533,38 +627,21 @@ class SonorieController extends ChangeNotifier {
           final name = base.split('/').last.toLowerCase();
           if (name == 'emulated' || name == 'self') continue;
           roots.addAll(<String>{
-            '$base/SnapTube Audio',
-            '$base/Snaptube',
             '$base/Music',
+            '$base/Audio',
             '$base/Download',
             '$base/Downloads',
-            '$base/Audio',
+            '$base/Podcasts',
+            '$base/SnapTube Audio',
+            '$base/Snaptube',
           });
         }
       }
-    } catch (_) {}
+    } catch (error) {
+      debugPrint('Sonorie: erro ao listar /storage -> $error');
+    }
 
     return roots;
-  }
-
-  MediaItem _mediaItemFor(AudioTrack track) {
-    return MediaItem(
-      id: track.path,
-      album: track.folder,
-      title: track.title,
-      artist: track.artist,
-      extras: <String, dynamic>{
-        'path': track.path,
-        'extension': track.extension,
-      },
-    );
-  }
-
-  AudioSource _audioSourceFor(AudioTrack track) {
-    return AudioSource.uri(
-      Uri.file(track.path),
-      tag: _mediaItemFor(track),
-    );
   }
 
   MediaItem _mediaItemFor(AudioTrack track) {
@@ -604,13 +681,21 @@ class SonorieController extends ChangeNotifier {
     try {
       final playlist = ConcatenatingAudioSource(
         useLazyPreparation: true,
+        shuffleOrder: DefaultShuffleOrder(),
         children: queue.map(_audioSourceFor).toList(growable: false),
       );
       await player.setAudioSource(
         playlist,
         initialIndex: currentIndex,
         initialPosition: Duration.zero,
+        preload: true,
       );
+      await player.setShuffleModeEnabled(shuffleEnabled);
+      await player.setLoopMode(switch (repeatMode) {
+        SonorieRepeatMode.off => LoopMode.off,
+        SonorieRepeatMode.all => LoopMode.all,
+        SonorieRepeatMode.one => LoopMode.one,
+      });
       await player.play();
     } catch (error) {
       playerMessage = 'Não foi possível tocar este arquivo: $error';
@@ -620,7 +705,11 @@ class SonorieController extends ChangeNotifier {
   }
 
   Future<void> togglePlayPause() async {
-    if (currentTrack == null) return;
+    if (currentTrack == null) {
+      if (songs.isEmpty) return;
+      await playTrack(songs.first);
+      return;
+    }
     if (player.playing) {
       await player.pause();
     } else {
@@ -635,6 +724,13 @@ class SonorieController extends ChangeNotifier {
     if (queue.isEmpty) return;
     if (player.hasNext) {
       await player.seekToNext();
+      if (!player.playing) await player.play();
+      return;
+    }
+    // Fim da fila sem repeat-all: para. Com repeat-all: volta ao início.
+    if (repeatMode == SonorieRepeatMode.all) {
+      await player.seek(Duration.zero, index: 0);
+      await player.play();
       return;
     }
     await player.pause();
@@ -643,15 +739,23 @@ class SonorieController extends ChangeNotifier {
 
   Future<void> playPrevious() async {
     if (queue.isEmpty) return;
-    if (position > const Duration(seconds: 4)) {
+    // Se a música já começou (>3s), volta ao início dela
+    if (position > const Duration(seconds: 3)) {
       await player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
       return;
     }
     if (player.hasPrevious) {
       await player.seekToPrevious();
+      if (!player.playing) await player.play();
       return;
     }
-    await player.seek(Duration.zero, index: currentIndex < 0 ? 0 : currentIndex);
+    // Na primeira faixa com repeat-all: vai para a última
+    if (repeatMode == SonorieRepeatMode.all && queue.isNotEmpty) {
+      await player.seek(Duration.zero, index: queue.length - 1);
+      await player.play();
+      return;
+    }
+    await player.seek(Duration.zero, index: 0);
   }
 
   Future<void> seek(Duration value) => player.seek(value);
@@ -1074,9 +1178,21 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   FilledButton.icon(
-                    onPressed: () => controller.scanLibrary(),
-                    icon: Icon(controller.scanning ? Icons.sync_rounded : Icons.play_arrow_rounded),
-                    label: Text(controller.scanning ? 'Varrendo...' : 'Permitir músicas'),
+                    onPressed: controller.scanning
+                        ? null
+                        : () => controller.scanLibrary(
+                              requestPermission: !controller.permissionGranted,
+                            ),
+                    icon: Icon(controller.scanning
+                        ? Icons.sync_rounded
+                        : controller.permissionGranted
+                            ? Icons.refresh_rounded
+                            : Icons.play_arrow_rounded),
+                    label: Text(controller.scanning
+                        ? 'Varrendo...'
+                        : controller.permissionGranted
+                            ? 'Atualizar biblioteca'
+                            : 'Permitir músicas'),
                   ),
                 ],
               ),
@@ -1390,6 +1506,34 @@ class PlayerScreen extends StatelessWidget {
                     iconSize: 36,
                     onPressed: controller.playNext,
                     icon: const Icon(Icons.skip_next_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  FilterChip(
+                    selected: controller.shuffleEnabled,
+                    onSelected: (_) => controller.toggleShuffle(),
+                    avatar: const Icon(Icons.shuffle_rounded, size: 18),
+                    label: const Text('Aleatório'),
+                  ),
+                  const SizedBox(width: 10),
+                  FilterChip(
+                    selected: controller.repeatMode != SonorieRepeatMode.off,
+                    onSelected: (_) => controller.cycleRepeat(),
+                    avatar: Icon(
+                      controller.repeatMode == SonorieRepeatMode.one
+                          ? Icons.repeat_one_rounded
+                          : Icons.repeat_rounded,
+                      size: 18,
+                    ),
+                    label: Text(switch (controller.repeatMode) {
+                      SonorieRepeatMode.off => 'Repetir',
+                      SonorieRepeatMode.all => 'Repetir tudo',
+                      SonorieRepeatMode.one => 'Repetir 1',
+                    }),
                   ),
                 ],
               ),

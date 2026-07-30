@@ -1,0 +1,44 @@
+# Gradle (Kotlin legado)
+/build/
+/app/build/
+/.gradle/
+*.iml
+.idea/
+local.properties
+captures/
+.externalNativeBuild
+.cxx/
+
+# Flutter (sonorie_flutter/)
+sonorie_flutter/.dart_tool/
+sonorie_flutter/.flutter-plugins
+sonorie_flutter/.flutter-plugins-dependencies
+sonorie_flutter/.packages
+sonorie_flutter/.pub-cache/
+sonorie_flutter/.pub/
+sonorie_flutter/build/
+sonorie_flutter/ios/Pods/
+sonorie_flutter/ios/.symlinks/
+sonorie_flutter/ios/Flutter/Flutter.framework
+sonorie_flutter/ios/Flutter/Flutter.podspec
+sonorie_flutter/android/.gradle/
+sonorie_flutter/android/app/build/
+sonorie_flutter/android/local.properties
+sonorie_flutter/android/key.properties
+sonorie_flutter/pubspec.lock
+
+# IDE
+*.iml
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APKs gerados por build local
+*.apk
+!tooling/**/*.apk

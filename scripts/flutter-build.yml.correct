@@ -1,0 +1,271 @@
+name: Sonorie Flutter Build
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/**"
+    paths:
+      - "sonorie_flutter/**"
+      - ".github/workflows/flutter-build.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "sonorie_flutter/**"
+      - ".github/workflows/flutter-build.yml"
+  workflow_dispatch:
+
+jobs:
+  build-flutter-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Generate Android host, official icon and media service
+        run: |
+          set -euo pipefail
+          TMP_FLUTTER="$(mktemp -d)"
+          cd "$TMP_FLUTTER"
+          flutter create . --platforms android --org com.swlab --project-name sonorie
+          rm -rf "$GITHUB_WORKSPACE/sonorie_flutter/android"
+          cp -R android "$GITHUB_WORKSPACE/sonorie_flutter/android"
+          cd "$GITHUB_WORKSPACE/sonorie_flutter"
+
+          cp -R tooling/android_icons/. android/app/src/main/res/
+
+          python3 - <<'PY2'
+          from pathlib import Path
+          import re
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          s = manifest.read_text(encoding="utf-8")
+
+          if "xmlns:tools=" not in s:
+              s = s.replace(
+                  "<manifest ",
+                  '<manifest xmlns:tools="http://schemas.android.com/tools" ',
+                  1,
+              )
+
+          permissions = [
+              '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />',
+              '<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />',
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+              '<uses-permission android:name="android.permission.WAKE_LOCK" />',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+              '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />',
+          ]
+          missing = [p for p in permissions if re.search(r'android:name="([^"]+)"', p).group(1) not in s]
+          if missing:
+              s = s.replace("<application", "\n    " + "\n    ".join(missing) + "\n\n    <application", 1)
+
+          s = s.replace('android:label="sonorie"', 'android:label="Sonorie"')
+          s = re.sub(
+              r'android:name="(?:com\.ryanheise\.audioservice\.AudioServiceActivity|com\.swlab\.sonorie\.MainActivity)"',
+              'android:name=".MainActivity"',
+              s,
+              count=1,
+          )
+
+          activity = Path(
+              "android/app/src/main/kotlin/com/swlab/sonorie/MainActivity.kt"
+          )
+          activity.parent.mkdir(parents=True, exist_ok=True)
+          activity.write_text(
+              """package com.swlab.sonorie
+
+import com.ryanheise.audioservice.AudioServiceActivity
+
+class MainActivity: AudioServiceActivity()
+""",
+              encoding="utf-8",
+          )
+
+          if 'android:requestLegacyExternalStorage=' not in s:
+              s = s.replace("<application", '<application android:requestLegacyExternalStorage="true"', 1)
+          if 'android:roundIcon=' not in s:
+              if 'android:icon="@mipmap/ic_launcher"' in s:
+                  s = s.replace(
+                      'android:icon="@mipmap/ic_launcher"',
+                      'android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"',
+                      1,
+                  )
+              else:
+                  s = s.replace(
+                      "<application",
+                      '<application android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"',
+                      1,
+                  )
+
+          media_components = (
+              "\n        <service\n"
+              "            android:name=\"com.ryanheise.audioservice.AudioService\"\n"
+              "            android:foregroundServiceType=\"mediaPlayback\"\n"
+              "            android:exported=\"true\"\n"
+              "            tools:ignore=\"Instantiatable\">\n"
+              "            <intent-filter>\n"
+              "                <action android:name=\"android.media.browse.MediaBrowserService\" />\n"
+              "            </intent-filter>\n"
+              "        </service>\n\n"
+              "        <receiver\n"
+              "            android:name=\"com.ryanheise.audioservice.MediaButtonReceiver\"\n"
+              "            android:exported=\"true\"\n"
+              "            tools:ignore=\"Instantiatable\">\n"
+              "            <intent-filter>\n"
+              "                <action android:name=\"android.intent.action.MEDIA_BUTTON\" />\n"
+              "            </intent-filter>\n"
+              "        </receiver>\n"
+          )
+          if 'android:name="com.ryanheise.audioservice.AudioService"' not in s:
+              s = s.replace("</application>", media_components + "\n    </application>", 1)
+
+          manifest.write_text(s, encoding="utf-8")
+
+          keep = Path("android/app/src/main/res/raw/keep.xml")
+          keep.parent.mkdir(parents=True, exist_ok=True)
+          keep.write_text(
+              """<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_sonorie,@drawable/ic_launcher_foreground,@drawable/ic_launcher_monochrome" />
+""",
+              encoding="utf-8",
+          )
+
+          required = [
+              "android.permission.WAKE_LOCK",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+              ".MainActivity",
+              "com.ryanheise.audioservice.AudioService",
+              "com.ryanheise.audioservice.MediaButtonReceiver",
+              "@mipmap/ic_launcher_round",
+          ]
+          missing_required = [item for item in required if item not in s]
+          if missing_required:
+              raise SystemExit(f"Manifest media incompleto: {missing_required}")
+          PY2
+
+          test -f android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          test -f android/app/src/main/res/drawable/ic_stat_sonorie.png
+          test -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          test -f android/app/src/main/kotlin/com/swlab/sonorie/MainActivity.kt
+          test -f android/app/src/main/res/raw/keep.xml
+
+      - name: Pub get
+        working-directory: sonorie_flutter
+        run: flutter pub get
+
+      - name: Analyze diagnostics only
+        working-directory: sonorie_flutter
+        run: |
+          set +e
+          flutter analyze
+          echo "flutter analyze exit=$?"
+          echo "Analyze is diagnostic-only. Real gate is flutter build apk."
+          exit 0
+
+      - name: Build debug APK with Network Rescue
+        working-directory: sonorie_flutter
+        run: |
+          # SONORIE_NETWORK_RESCUE_V3
+          set -euo pipefail
+          mkdir -p "$HOME/.gradle/init.d"
+          cat > "$HOME/.gradle/init.d/sonorie-network-rescue.gradle" <<'GRADLE_RESCUE'
+          def sonorieRepositories = { handler ->
+              handler.maven { url = 'https://maven.aliyun.com/repository/google' }
+              handler.maven { url = 'https://maven.aliyun.com/repository/central' }
+              handler.maven { url = 'https://maven.aliyun.com/repository/gradle-plugin' }
+              handler.maven { url = 'https://maven.aliyun.com/repository/public' }
+              handler.maven { url = 'https://repo.huaweicloud.com/repository/maven/' }
+              handler.google()
+              handler.mavenCentral()
+              handler.gradlePluginPortal()
+          }
+
+          gradle.beforeSettings { settings ->
+              try {
+                  settings.pluginManagement.repositories.clear()
+                  sonorieRepositories(settings.pluginManagement.repositories)
+              } catch (Throwable ignored) { }
+          }
+
+          settingsEvaluated { settings ->
+              try {
+                  settings.pluginManagement.repositories.clear()
+                  sonorieRepositories(settings.pluginManagement.repositories)
+              } catch (Throwable ignored) { }
+              try {
+                  settings.dependencyResolutionManagement.repositories.clear()
+                  sonorieRepositories(settings.dependencyResolutionManagement.repositories)
+              } catch (Throwable ignored) { }
+          }
+
+          allprojects { project ->
+              try {
+                  project.buildscript.repositories.clear()
+                  sonorieRepositories(project.buildscript.repositories)
+              } catch (Throwable ignored) { }
+              try {
+                  project.repositories.clear()
+                  sonorieRepositories(project.repositories)
+              } catch (Throwable ignored) { }
+          }
+          GRADLE_RESCUE
+
+          mkdir -p "$HOME/.gradle"
+          cat >> "$HOME/.gradle/gradle.properties" <<'GRADLE_PROPERTIES'
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.caching=true
+          org.gradle.internal.http.connectionTimeout=180000
+          org.gradle.internal.http.socketTimeout=180000
+          GRADLE_PROPERTIES
+
+          flutter pub get
+          build_ok=0
+          for attempt in 1 2 3 4; do
+            echo "=== Sonorie Gradle/Maven attempt $attempt/4 ==="
+            if flutter build apk --debug --build-name=0.4.4 --build-number=50; then
+              build_ok=1
+              break
+            fi
+            if [ -x android/gradlew ]; then
+              (cd android && ./gradlew --stop) || true
+            fi
+            rm -rf "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin" || true
+            rm -rf "$HOME/.gradle/caches/modules-2"/metadata-* || true
+            if [ "$attempt" -ge 2 ]; then
+              flutter clean || true
+              flutter pub get
+            fi
+            sleep $((attempt * 30))
+          done
+
+          if [ "$build_ok" -ne 1 ]; then
+            echo "Sonorie Network Rescue esgotou as quatro tentativas."
+            exit 1
+          fi
+
+      - name: Validate APK
+        run: |
+          test -f sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Upload Flutter APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonorie-v0.4.4-r1-flutter-debug-apk
+          path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

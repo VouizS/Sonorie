@@ -230,7 +230,7 @@ class MainActivity: AudioServiceActivity()
           build_ok=0
           for attempt in 1 2 3 4; do
             echo "=== Sonorie Gradle/Maven attempt $attempt/4 ==="
-            if flutter build apk --debug --build-name=0.4.3 --build-number=49; then
+            if flutter build apk --debug --build-name=0.4.4 --build-number=50; then
               build_ok=1
               break
             fi
@@ -259,6 +259,6 @@ class MainActivity: AudioServiceActivity()
       - name: Upload Flutter APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sonorie-v0.4.3-r2-startup-guard-audioservice-flutter-debug-apk
+          name: Sonorie-v0.4.4-r1-flutter-debug-apk
           path: sonorie_flutter/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error

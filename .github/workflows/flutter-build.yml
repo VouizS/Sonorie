@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+      - "arena/**"
+    paths:
+      - "sonorie_flutter/**"
+      - ".github/workflows/flutter-build.yml"
+  pull_request:
+    branches:
+      - main
     paths:
       - "sonorie_flutter/**"
       - ".github/workflows/flutter-build.yml"

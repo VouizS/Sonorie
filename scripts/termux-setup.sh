@@ -72,9 +72,16 @@ if ! grep -q "# Sonorie aliases" "$HOME/.bashrc" 2>/dev/null; then
 alias sonorie='cd ~/Sonorie'
 alias sgs='cd ~/Sonorie && git status'
 alias sgps='cd ~/Sonorie && git push'
+alias sblog='cd ~/Sonorie && ls -lt ~/storage/downloads/Sonorie/build-error-*.txt 2>/dev/null | head -1'
 sgpl() { cd ~/Sonorie && git pull --rebase; }
 sgc()  { cd ~/Sonorie && git add -A && git commit -m "$*"; }
 sgd()  { cd ~/Sonorie && git diff --stat; }
+sb()   { cd ~/Sonorie && bash scripts/sonorie-build.sh "$*"; }
+sblog() {
+  local f;
+  f=$(ls -t ~/storage/downloads/Sonorie/build-error-*.txt 2>/dev/null | head -1);
+  if [[ -n "$f" ]]; then echo "=== $f ==="; tail -80 "$f"; else echo "Sem logs de erro ainda."; fi;
+}
 EOF
 fi
 
